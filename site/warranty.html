@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Гарантия и возврат — ATOMM</title>
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="icon" href="favicon-32.png" sizes="32x32" type="image/png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="theme-color" content="#d7d9dc">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:radial-gradient(120% 70% at 50% 0%,#eef0f2 0%,#d9dbde 60%,#cbced2 100%) fixed;color:#1c1e21;font-family:Inter,system-ui,sans-serif;line-height:1.6;min-height:100vh}
+header{padding:20px 32px;border-bottom:1px solid rgba(28,30,33,.13);display:flex;justify-content:space-between;align-items:center}
+.logo{font-family:'JetBrains Mono',monospace;font-weight:500;letter-spacing:.34em;text-decoration:none;color:inherit}
+.logo i{font-style:normal;color:#6b6f75;letter-spacing:.1em;margin-left:6px;font-weight:300}
+nav a{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:inherit;opacity:.65;margin-left:22px;text-decoration:none}
+nav a:hover,nav a.on{opacity:1}
+main{max-width:1100px;margin:0 auto;padding:56px 32px 90px}
+.tag{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#6b6f75;display:flex;gap:10px;align-items:center}
+.tag:before{content:"";width:22px;height:1px;background:#6b6f75}
+h1{font-weight:200;font-size:clamp(40px,6vw,84px);letter-spacing:-.045em;line-height:.95;margin:18px 0 48px}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.card{background:rgba(240,241,243,.72);border:1px solid rgba(255,255,255,.6);border-radius:20px;padding:28px 26px;display:flex;flex-direction:column;gap:14px}
+.num{font-family:'JetBrains Mono',monospace;font-weight:300;font-size:56px;letter-spacing:-.04em;line-height:1}
+.num small{font-size:16px;letter-spacing:.02em;margin-left:6px;color:#6b6f75}
+.card h2{font-weight:500;font-size:18px}
+.card p{font-size:15px;color:#3f4348}
+.card ul{list-style:none;display:flex;flex-direction:column;gap:8px}
+.card li{font-size:15px;color:#3f4348;display:flex;gap:10px}
+.card li:before{content:"—";color:#9a9ea4}
+.back{display:inline-flex;margin-top:40px;background:#1c1e21;color:#eef0f2;padding:16px 28px;border-radius:999px;text-decoration:none;font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.12em;text-transform:uppercase}
+@media(max-width:860px){.grid{grid-template-columns:1fr} header{padding:16px 18px} main{padding:36px 18px 70px} nav a{margin-left:14px}}
+</style>
+</head>
+<body>
+<header><a class="logo" href="index.html">ATOMM<i>/store</i></a><nav><a href="index.html">Главная</a><a href="catalog.html">Каталог</a><a href="warranty.html" class="on">Гарантия</a></nav></header>
+<main>
+  <div class="tag">Покупателям</div>
+  <h1>Гарантия<br>и возврат</h1>
+  <div class="grid">
+    <section class="card">
+      <div class="num">12<small>месяцев</small></div>
+      <h2>Гарантийное обслуживание</h2>
+      <p>В нашем сервисном центре, 12 месяцев с даты покупки.</p>
+    </section>
+    <section class="card">
+      <div class="num">14<small>дней</small></div>
+      <h2>Возврат и обмен товара</h2>
+      <p>14 календарных дней с момента покупки, включая день покупки.</p>
+    </section>
+    <section class="card">
+      <div class="num">3<small>условия</small></div>
+      <h2>Особенности возврата</h2>
+      <p>Возврат денежных средств или обмен товара возможен, только если:</p>
+      <ul>
+        <li>не нарушен товарный внешний вид устройства;</li>
+        <li>устройство не было активировано;</li>
+        <li>сохранены чек и товарная накладная.</li>
+      </ul>
+    </section>
+  </div>
+  <a class="back" href="catalog.html">Перейти в каталог →</a>
+</main>
+</body>
+</html>
