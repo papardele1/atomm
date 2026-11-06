@@ -150,7 +150,7 @@ form.co input:focus,form.co textarea:focus{border-color:rgba(28,30,33,.4)}
 <header>
   <a class="logo" href="index.html">ATOMM<i>/store</i></a>
   <label class="search"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input id="q" type="search" placeholder="Поиск: iPhone 17 Pro, AirPods, Dyson…" autocomplete="off"></label>
-  <nav class="hnav mono"><a href="index.html">Главная</a><a href="privacy.html">Политика</a><a href="#" data-soon>Доставка</a><a href="warranty.html">Гарантия</a><a href="#" data-soon>Контакты</a></nav>
+  <nav class="hnav mono"><a href="index.html">Главная</a><a href="privacy.html">Политика</a><a href="delivery.html">Доставка</a><a href="warranty.html">Гарантия</a><a href="#" data-soon>Контакты</a></nav>
   <button class="cartbtn mono" id="cartOpen">Корзина <b id="cartSum">0 ₽</b><span class="cnt" id="cartCnt">0</span></button>
 </header>
 
@@ -249,6 +249,15 @@ function cartTotals(){let n=0,s=0;for(const k in cart){const i=IDX[k];if(i===und
 function updCartBtn(){const t=cartTotals();$('#cartCnt').textContent=t.n;$('#cartSum').textContent=fmt(t.s);}
 function addToCart(i,el){const id=IDS[i];cart[id]=(cart[id]||0)+1;saveCart();updCartBtn();toast('Добавлено в корзину');if(el){el.classList.add('done');el.textContent='✓';setTimeout(()=>{el.classList.remove('done');el.textContent='+';},1200);}}
 
+/* ---------- delivery ---------- */
+const DELIVERY=1000;
+function deliveryWhen(){
+  const now=new Date(Date.now()+(3*60+new Date().getTimezoneOffset())*60000); // московское время
+  const d=new Date(now);if(now.getHours()>=15)d.setDate(d.getDate()+1);
+  const m=['января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря'];
+  return (d.getDate()===now.getDate()?'сегодня':'завтра')+', '+d.getDate()+' '+m[d.getMonth()]+', с 17:00 до 22:00';
+}
+
 /* ---------- toast ---------- */
 let tt;function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('show');clearTimeout(tt);tt=setTimeout(()=>t.classList.remove('show'),1800);}
 
@@ -310,7 +319,7 @@ function openItem(i){const it=ITEMS[i];
   <h2>${esc(it[3])}</h2>
   <div class="mprice">${it[4]?fmt(it[4]):'Цена по запросу'}</div>
   <div class="qtyrow"><button class="btn" data-add="${i}" ${(!it[5]||!it[4])?'disabled':''}>${it[5]?'В корзину':'Нет в наличии'}</button><button class="btn ghost" data-buy="${i}" ${(!it[5]||!it[4])?'disabled':''}>Купить сейчас</button></div>
-  <dl class="mmeta"><dt>Бренд</dt><dd>${it[1]>=0?D.brands[it[1]]:'—'}</dd><dt>Состояние</dt><dd>${['Новый, оригинал','Как новый (проверенный)','Уценённый'][it[6]]}</dd><dt>Наличие</dt><dd>${it[5]?'В наличии':'Нет в наличии'}</dd><dt>Гарантия</dt><dd>12 месяцев · возврат и обмен 14 дней <a href="warranty.html" style="color:var(--mute)">условия</a></dd></dl>
+  <dl class="mmeta"><dt>Бренд</dt><dd>${it[1]>=0?D.brands[it[1]]:'—'}</dd><dt>Состояние</dt><dd>${['Новый, оригинал','Как новый (проверенный)','Уценённый'][it[6]]}</dd><dt>Наличие</dt><dd>${it[5]?'В наличии':'Нет в наличии'}</dd><dt>Доставка</dt><dd>${fmt(DELIVERY)} · ${deliveryWhen()} <a href="delivery.html" style="color:var(--mute)">условия</a></dd><dt>Гарантия</dt><dd>12 месяцев · возврат и обмен 14 дней <a href="warranty.html" style="color:var(--mute)">условия</a></dd></dl>
   <div class="pay"><div class="mono" style="color:var(--mute)">Оплата</div>
    <div class="row"><i>✓</i><div>Наличными при получении</div></div>
    <div class="row off"><i>—</i><div>Картой — временно недоступно по техническим причинам</div></div></div>
@@ -326,17 +335,18 @@ function openCart(step){
   const keys=Object.keys(cart).filter(k=>IDX[k]!==undefined);
   const t=cartTotals();
   if(step==='done'||step==='demo'){ $('#dTitle').textContent='Заказ';
-    $('#dBody').innerHTML=step==='done'?`<div class="done"><div class="ok">✓</div><h3 style="font-weight:300;font-size:22px">Заказ №${LAST.order} принят</h3><p class="note" style="max-width:300px">Сумма ${fmt(LAST.total)}, оплата наличными при получении. Мы позвоним вам, чтобы подтвердить заказ и время доставки.</p></div>`:`<div class="done"><div class="ok">✓</div><h3 style="font-weight:300;font-size:22px">Демо-оформление</h3><p class="note" style="max-width:300px">Это предварительная версия сайта без сервера: заказ не отправлен. Ваша корзина сохранена.</p></div>`;
+    $('#dBody').innerHTML=step==='done'?`<div class="done"><div class="ok">✓</div><h3 style="font-weight:300;font-size:22px">Заказ №${LAST.order} принят</h3><p class="note" style="max-width:300px">Сумма ${fmt(LAST.total)} с доставкой, оплата наличными курьеру. Доставим ${LAST.when}. Мы позвоним, чтобы подтвердить заказ.</p></div>`:`<div class="done"><div class="ok">✓</div><h3 style="font-weight:300;font-size:22px">Демо-оформление</h3><p class="note" style="max-width:300px">Это предварительная версия сайта без сервера: заказ не отправлен. Ваша корзина сохранена.</p></div>`;
     $('#dFoot').innerHTML=`<button class="btn ghost" data-close>Вернуться в каталог</button>`;
   } else if(step==='checkout'){ $('#dTitle').textContent='Оформление';
-    $('#dBody').innerHTML=`<form class="co" id="co"><input required name="name" placeholder="Имя"><input required name="phone" type="tel" placeholder="Телефон"><textarea name="addr" rows="2" placeholder="Адрес доставки (Москва и область)"></textarea>
+    $('#dBody').innerHTML=`<form class="co" id="co"><input required name="name" placeholder="Имя"><input required name="phone" type="tel" placeholder="Телефон"><textarea name="addr" rows="2" required placeholder="Адрес доставки"></textarea>
+      <div class="note" style="margin-top:2px">Доставка ${fmt(DELIVERY)}: ${deliveryWhen()}. Курьер позвонит заранее.</div>
       <div class="mono" style="color:var(--mute);margin-top:8px">Способ оплаты</div>
-      <div class="paysel"><label class="payopt on"><input type="radio" name="pay" value="cash" checked><div>Наличными при получении<small>Курьеру или в пункте самовывоза</small></div></label>
+      <div class="paysel"><label class="payopt on"><input type="radio" name="pay" value="cash" checked><div>Наличными при получении<small>Курьеру при доставке</small></div></label>
       <label class="payopt"><input type="radio" name="pay" value="card"><div>Картой онлайн<small>Visa, Mastercard, МИР</small></div></label></div>
       <div class="warn" id="warn">Оплата картой по техническим причинам временно недоступна. Пожалуйста, выберите оплату наличными при получении.</div>
       <label class="chk" style="font-size:12.5px;align-items:flex-start;color:var(--mute)"><input type="checkbox" name="consent" required style="margin-top:2px"> <span>Согласен на обработку персональных данных в соответствии с <a href="privacy.html" target="_blank">политикой конфиденциальности</a></span></label>
       <div class="warn" id="err"></div></form>`;
-    $('#dFoot').innerHTML=`<div class="total"><span class="mono">Итого</span><b>${fmt(t.s)}</b></div><button class="btn" id="place">Подтвердить заказ</button><button class="btn ghost" id="back">Назад в корзину</button>`;
+    $('#dFoot').innerHTML=`<div class="total" style="font-size:13px;color:var(--mute)"><span>Товары · ${t.n} шт.</span><span>${fmt(t.s)}</span></div><div class="total" style="font-size:13px;color:var(--mute)"><span>Доставка</span><span>${fmt(DELIVERY)}</span></div><div class="total"><span class="mono">Итого</span><b>${fmt(t.s+DELIVERY)}</b></div><button class="btn" id="place">Подтвердить заказ</button><button class="btn ghost" id="back">Назад в корзину</button>`;
   } else { $('#dTitle').textContent='Корзина';
     $('#dBody').innerHTML=keys.length?keys.map(k=>{const it=ITEMS[IDX[k]];return `<div class="ditem"><div class="t">${icon(it[0],it[3])}</div><div><div class="nm">${esc(it[3])}</div><div class="pr">${fmt(it[4]*cart[k])}</div></div><div class="qty"><button data-dec="${k}">−</button><span>${cart[k]}</span><button data-inc="${k}">+</button></div></div>`}).join(''):'<div class="empty" style="padding:60px 0">Корзина пуста</div>';
     $('#dFoot').innerHTML=keys.length?`<div class="total"><span class="mono">Итого · ${t.n} шт.</span><b>${fmt(t.s)}</b></div><button class="btn" id="toCheckout">Оформить заказ</button>`:`<button class="btn ghost" data-close>Перейти к покупкам</button>`;

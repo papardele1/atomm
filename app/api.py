@@ -26,6 +26,23 @@ DB = os.environ.get("ATOMM_DB", "/var/lib/atomm/orders.db")
 TG_TOKEN = os.environ.get("TG_TOKEN", "")
 TG_CHAT = os.environ.get("TG_CHAT", "")
 SITE = os.environ.get("ATOMM_SITE", "")  # папка со статикой сайта (Docker-режим)
+DELIVERY_PRICE = int(os.environ.get("ATOMM_DELIVERY_PRICE", "1000"))
+DELIVERY_CUTOFF_HOUR = 15          # заказ до 15:00 по Москве — доставка в тот же день
+DELIVERY_WINDOW = "с 17:00 до 22:00"
+MSK = __import__("datetime").timezone(__import__("datetime").timedelta(hours=3))
+
+
+def delivery_day(now=None):
+    """'сегодня' или 'завтра' + дата, по московскому времени."""
+    import datetime as dt
+    now = now or dt.datetime.now(MSK)
+    day = now.date() if now.hour < DELIVERY_CUTOFF_HOUR else now.date() + dt.timedelta(days=1)
+    months = ["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября",
+              "октября", "ноября", "декабря"]
+    word = "сегодня" if day == now.date() else "завтра"
+    return f"{word}, {day.day} {months[day.month - 1]}"
+
+
 CHAT_FILE = os.path.join(os.path.dirname(DB) or ".", "tg_chat")
 
 # каталог: при первом запуске берём снимок из образа, дальше его обновляет парсер
@@ -234,6 +251,8 @@ def order(o: Order, request: Request):
     digits = re.sub(r"\D", "", o.phone)
     if len(digits) < 10:
         return err("Проверьте номер телефона.")
+    if len(o.addr.strip()) < 5:
+        return err("Укажите адрес доставки.")
     cat = catalog()
     lines, total = [], 0
     for ln in o.items:
@@ -244,6 +263,9 @@ def order(o: Order, request: Request):
             return err(f"Нет в наличии: {it['name']}")
         lines.append({"id": ln.id, "name": it["name"], "qty": ln.qty, "price": it["price"]})
         total += it["price"] * ln.qty
+    goods = total
+    total += DELIVERY_PRICE
+    when = f"{delivery_day()}, {DELIVERY_WINDOW}"
     with _lock:
         con = db()
         cur = con.execute("insert into orders(created,name,phone,addr,pay,total,items,ip) values(?,?,?,?,?,?,?,?)",
@@ -253,9 +275,10 @@ def order(o: Order, request: Request):
         no = cur.lastrowid
         con.close()
     body = "\n".join(f"• {l['name']} × {l['qty']} — {rub(l['price'] * l['qty'])}" for l in lines)
-    notify(f"🛒 Новый заказ №{no}\n\n{body}\n\nИтого: {rub(total)}\nОплата: наличными при получении\n\n"
-           f"Имя: {o.name}\nТелефон: {o.phone}\nАдрес: {o.addr or '—'}")
-    return {"ok": True, "order": no, "total": total}
+    notify(f"🛒 Новый заказ №{no}\n\n{body}\n\nТовары: {rub(goods)}\nДоставка: {rub(DELIVERY_PRICE)}\n"
+           f"Итого: {rub(total)}\nОплата: наличными при получении\n\nДоставить: {when}\n"
+           f"Имя: {o.name}\nТелефон: {o.phone}\nАдрес: {o.addr}")
+    return {"ok": True, "order": no, "total": total, "delivery": DELIVERY_PRICE, "when": when}
 
 
 # --- статика сайта (Docker-режим): должна подключаться последней ---
