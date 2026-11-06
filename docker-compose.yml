@@ -1,0 +1,41 @@
+# ATOMM в Docker на сервере с mskm2bot.
+# Сайт и HTTPS отдаёт Caddy из mskm2bot (блок atomm.store в его Caddyfile) через общую сеть edge.
+# Запуск — workflow «ATOMM деплой» в репозитории mskm2bot.
+name: atomm
+
+services:
+  api:
+    build: .
+    restart: unless-stopped
+    environment:
+      TG_TOKEN: ${ATOMM_TG_TOKEN:-}
+      TG_CHAT: ${ATOMM_TG_CHAT:-}
+    extra_hosts:
+      # api.telegram.org по DNS из РФ недоступен (как и в mskm2bot)
+      - "api.telegram.org:${TELEGRAM_API_IP:-149.154.167.220}"
+    volumes:
+      - www:/www
+      - data:/data
+    networks:
+      default: {}
+      edge:
+        aliases: [atomm-api]
+
+  parser:
+    build: .
+    restart: unless-stopped
+    # первый сбор через минуту после старта, дальше каждые 4 часа
+    command: ["sh", "-c", "sleep 60; while true; do python /app/app/parser.py; sleep 14400; done"]
+    environment:
+      ATOMM_PROXY: ${ATOMM_PROXY:-}
+    volumes:
+      - www:/www
+
+volumes:
+  www:
+  data:
+
+networks:
+  edge:
+    external: true
+    name: edge

@@ -3,6 +3,7 @@
 POST /api/order — проверяет заказ по актуальному catalog.json (цены считаются на сервере,
 не берутся из браузера), сохраняет в SQLite и отправляет уведомление в Telegram.
 GET  /api/health — проверка работы.
+В Docker-режиме (ATOMM_SITE задан) также отдаёт сам сайт и catalog.json.
 """
 import json
 import os
@@ -12,15 +13,26 @@ import threading
 import time
 from collections import defaultdict, deque
 
+import shutil
+
 import requests
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 CATALOG = os.environ.get("ATOMM_CATALOG", "/var/www/atomm/catalog.json")
 DB = os.environ.get("ATOMM_DB", "/var/lib/atomm/orders.db")
 TG_TOKEN = os.environ.get("TG_TOKEN", "")
 TG_CHAT = os.environ.get("TG_CHAT", "")
+SITE = os.environ.get("ATOMM_SITE", "")  # папка со статикой сайта (Docker-режим)
+CHAT_FILE = os.path.join(os.path.dirname(DB) or ".", "tg_chat")
+
+# каталог: при первом запуске берём снимок из образа, дальше его обновляет парсер
+if SITE and not os.path.exists(CATALOG):
+    os.makedirs(os.path.dirname(CATALOG), exist_ok=True)
+    shutil.copy(os.path.join(SITE, "catalog.json"), CATALOG)
+os.makedirs(os.path.dirname(DB) or ".", exist_ok=True)
 
 app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
 _lock = threading.Lock()
@@ -73,12 +85,50 @@ def limited(ip):
     return len(q) > 5  # не больше 5 заказов за 10 минут с одного адреса
 
 
+def chat_id():
+    """Чат для уведомлений: из настроек, иначе — тот, кто первым написал боту /start."""
+    if TG_CHAT:
+        return TG_CHAT
+    try:
+        with open(CHAT_FILE) as f:
+            return f.read().strip()
+    except OSError:
+        return ""
+
+
+def _send(chat, text):
+    requests.post(f"https://api.telegram.org/bot{TG_TOKEN}/sendMessage",
+                  json={"chat_id": chat, "text": text}, timeout=10)
+
+
+def _watch_start():
+    """Ждёт /start от владельца, чтобы узнать чат для заказов (если TG_CHAT не задан)."""
+    offset = None
+    while TG_TOKEN and not chat_id():
+        try:
+            r = requests.get(f"https://api.telegram.org/bot{TG_TOKEN}/getUpdates",
+                             params={"timeout": 25, "offset": offset}, timeout=35).json()
+            for u in r.get("result", []):
+                offset = u["update_id"] + 1
+                m = u.get("message") or {}
+                if (m.get("text") or "").startswith("/start"):
+                    with open(CHAT_FILE, "w") as f:
+                        f.write(str(m["chat"]["id"]))
+                    _send(m["chat"]["id"], "✅ ATOMM подключён. Сюда будут приходить новые заказы.")
+                    return
+        except Exception:
+            time.sleep(10)
+
+
+threading.Thread(target=_watch_start, daemon=True).start()
+
+
 def notify(text):
-    if not (TG_TOKEN and TG_CHAT):
+    chat = chat_id()
+    if not (TG_TOKEN and chat):
         return
     try:
-        requests.post(f"https://api.telegram.org/bot{TG_TOKEN}/sendMessage",
-                      json={"chat_id": TG_CHAT, "text": text}, timeout=10)
+        _send(chat, text)
     except requests.RequestException:
         pass
 
@@ -89,7 +139,7 @@ def rub(n):
 
 @app.get("/api/health")
 def health():
-    return {"ok": True, "items": len(catalog())}
+    return {"ok": True, "items": len(catalog()), "telegram": bool(TG_TOKEN and chat_id())}
 
 
 @app.post("/api/order")
@@ -128,3 +178,12 @@ def order(o: Order, request: Request):
     notify(f"🛒 Новый заказ №{no}\n\n{body}\n\nИтого: {rub(total)}\nОплата: наличными при получении\n\n"
            f"Имя: {o.name}\nТелефон: {o.phone}\nАдрес: {o.addr or '—'}")
     return {"ok": True, "order": no, "total": total}
+
+
+# --- статика сайта (Docker-режим): должна подключаться последней ---
+if SITE:
+    @app.get("/catalog.json")
+    def catalog_file():
+        return FileResponse(CATALOG, media_type="application/json", headers={"Cache-Control": "no-cache"})
+
+    app.mount("/", StaticFiles(directory=SITE, html=True), name="site")
