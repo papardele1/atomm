@@ -159,9 +159,8 @@ form.co input:focus,form.co textarea:focus{border-color:rgba(28,30,33,.4)}
     <div class="fgroup"><div class="ftitle mono">Разделы</div><div class="seclist" id="secs"></div></div>
     <div class="fgroup"><div class="ftitle mono">Бренд</div><div class="brandlist" id="brands"></div></div>
     <div class="fgroup"><div class="ftitle mono">Цена, ₽</div><div class="price"><input id="pmin" inputmode="numeric" placeholder="от"><input id="pmax" inputmode="numeric" placeholder="до"></div></div>
-    <div class="fgroup"><div class="ftitle mono">Наличие и состояние</div>
+    <div class="fgroup"><div class="ftitle mono">Наличие</div>
       <label class="chk"><input type="checkbox" id="fStock" checked> Только в наличии</label>
-      <label class="chk"><input type="checkbox" id="fNew"> Только новые</label>
       <button class="reset" id="reset">Сбросить фильтры</button>
     </div>
     <div class="fgroup mfilter"><button class="btn" id="asideClose" style="width:100%">Показать товары</button></div>
@@ -386,7 +385,7 @@ document.addEventListener('change',e=>{const t=e.target;
 let qt;$('#q').addEventListener('input',e=>{clearTimeout(qt);qt=setTimeout(()=>{S.q=e.target.value.trim();S.shown=48;render();},160);});
 ['pmin','pmax'].forEach(id=>$('#'+id).addEventListener('input',e=>{clearTimeout(qt);qt=setTimeout(()=>{S[id]=+e.target.value.replace(/\D/g,'')||0;S.shown=48;render();},300);}));
 $('#more').addEventListener('click',()=>{S.shown+=48;render();});
-$('#reset').addEventListener('click',()=>{Object.assign(S,{sec:-1,sub:-1,q:'',pmin:0,pmax:0,stock:true,onlyNew:false,shown:48});S.brands.clear();$('#q').value='';$('#pmin').value='';$('#pmax').value='';$('#fStock').checked=true;$('#fNew').checked=false;render();});
+$('#reset').addEventListener('click',()=>{Object.assign(S,{sec:-1,sub:-1,q:'',pmin:0,pmax:0,stock:true,onlyNew:false,shown:48});S.brands.clear();$('#q').value='';$('#pmin').value='';$('#pmax').value='';$('#fStock').checked=true;render();});
 $('#ov').addEventListener('click',closeAll);
 $('#dClose').addEventListener('click',closeAll);
 $('#cartOpen').addEventListener('click',()=>openCart());

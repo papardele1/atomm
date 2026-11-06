@@ -52,6 +52,17 @@ def is_service(name):
     return name.startswith(SERVICE_PREFIXES)
 
 
+# Не продаём: всё с маркой Store77, восстановленное, «Селект / как новое», уценку, их услуги и доработки.
+EXCLUDED_SUBS = {"Store77 Outlet", "Восстановленная техника", "Техника Селект (как новая)", "Уцененная техника",
+                 "Настройка компьютеров Mac", "Гравировка и клавиши"}
+_EXCLUDED_NAME = re.compile(r"store\s*77|стор\s*77|восстановлен|\(селект|селект\)|уценк|как нов|"
+                            r"создание учетной записи", re.I)
+
+
+def is_excluded(name, sub=""):
+    return (sub in EXCLUDED_SUBS or "(Уценка)" in (sub or "") or bool(_EXCLUDED_NAME.search(name)))
+
+
 def section_of(name, top):
     for keys, sec in RULES:
         if any(name.startswith(k) for k in keys):
@@ -87,7 +98,7 @@ def build(products):
     """products: list of dict(url, name, price, in_stock, sub_name, top)."""
     goods = []
     for p in products:
-        if is_service(p["name"]):
+        if is_service(p["name"]) or is_excluded(p["name"], p.get("sub_name") or ""):
             continue
         goods.append(dict(id=product_id(p["url"]), section=section_of(p["name"], p.get("top", "")),
                           brand=brand_of(p["name"]), sub=p.get("sub_name") or "Прочее", name=p["name"],
