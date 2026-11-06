@@ -207,7 +207,9 @@ function colorOf(n){const m=n.match(/цвет[^:]*:\s*([^,(]+)(\(([^)]+)\))?/i);
 function shade(hex,k){const n=parseInt(hex.slice(1),16);let r=n>>16,g=n>>8&255,b=n&255;const f=v=>Math.max(0,Math.min(255,Math.round(k<0?v*(1+k):v+(255-v)*k)));return '#'+((1<<24)+(f(r)<<16)+(f(g)<<8)+f(b)).toString(16).slice(1);}
 
 /* ---------- illustrations ---------- */
+const ICON_SECS=['Смартфоны','Планшеты','Ноутбуки и компьютеры','Часы и браслеты','Аудио','Игры и приставки','Техника для дома и красоты','Камеры и дроны','Конструкторы Lego','Аксессуары'];
 function icon(sec,name){
+  if(D){const k=ICON_SECS.indexOf(D.sections[sec]);sec=k<0?9:k;}
   const c=colorOf(name),d=shade(c,-.28),l=shade(c,.35),gid='g'+Math.random().toString(36).slice(2,8);
   const grad=`<defs><linearGradient id="${gid}" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${l}"/><stop offset="1" stop-color="${d}"/></linearGradient></defs>`;
   const F=`url(#${gid})`;

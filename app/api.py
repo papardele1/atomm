@@ -45,14 +45,19 @@ def _clean_catalog():
             d = json.load(f)
     except (OSError, ValueError):
         return
-    keep = [i for i in d["items"] if not catalog_lib.is_excluded(i[4], d["subs"][i[3]])]
-    if len(keep) == len(d["items"]):
+    keep = [i for i in d["items"] if not catalog_lib.is_excluded(i[4], d["subs"][i[3]])
+            and d["sections"][i[1]] in catalog_lib.SECTIONS]
+    if len(keep) == len(d["items"]) and d["sections"] == catalog_lib.SECTIONS:
         return
+    sec_idx = {n: k for k, n in enumerate(catalog_lib.SECTIONS)}
+    old_sections = d["sections"]
+    d["sections"] = catalog_lib.SECTIONS
     brands = sorted({d["brands"][i[2]] for i in keep if i[2] >= 0})
     subs = sorted({d["subs"][i[3]] for i in keep})
     bi = {b: k for k, b in enumerate(brands)}
     si = {x: k for k, x in enumerate(subs)}
-    d["items"] = [[i[0], i[1], bi[d["brands"][i[2]]] if i[2] >= 0 else -1, si[d["subs"][i[3]]]] + i[4:] for i in keep]
+    d["items"] = [[i[0], sec_idx[old_sections[i[1]]], bi[d["brands"][i[2]]] if i[2] >= 0 else -1,
+                   si[d["subs"][i[3]]]] + i[4:] for i in keep]
     d["brands"], d["subs"] = brands, subs
     catalog_lib.write_atomic(d, CATALOG)
 
