@@ -96,9 +96,57 @@ def chat_id():
         return ""
 
 
-def _send(chat, text):
-    requests.post(f"https://api.telegram.org/bot{TG_TOKEN}/sendMessage",
-                  json={"chat_id": chat, "text": text}, timeout=10)
+# --- Telegram: из российских дата-центров связь с api.telegram.org нестабильна,
+# поэтому все сообщения идут через очередь в SQLite и повторяются до доставки.
+_wake = threading.Event()
+WELCOME_FLAG = os.path.join(os.path.dirname(DB) or ".", "tg_welcome_sent")
+
+
+def _outbox_db():
+    con = sqlite3.connect(DB, timeout=10)
+    con.execute("""create table if not exists outbox(
+        id integer primary key autoincrement, created text, text text,
+        sent integer default 0, tries integer default 0, last_error text)""")
+    return con
+
+
+def notify(text):
+    with _lock:
+        con = _outbox_db()
+        con.execute("insert into outbox(created, text) values(?, ?)", (time.strftime("%Y-%m-%d %H:%M:%S"), text))
+        con.commit()
+        con.close()
+    _wake.set()
+
+
+def _tg(method, **kw):
+    return requests.post(f"https://api.telegram.org/bot{TG_TOKEN}/{method}", json=kw, timeout=(6, 30)).json()
+
+
+def _sender():
+    while True:
+        _wake.wait(20)
+        _wake.clear()
+        chat = chat_id()
+        if not (TG_TOKEN and chat):
+            continue
+        con = _outbox_db()
+        rows = con.execute("select id, text from outbox where sent = 0 order by id limit 20").fetchall()
+        for oid, text in rows:
+            try:
+                r = _tg("sendMessage", chat_id=chat, text=text)
+                if r.get("ok"):
+                    con.execute("update outbox set sent = 1 where id = ?", (oid,))
+                elif r.get("error_code") in (400, 403):  # чат недоступен — не повторяем бесконечно
+                    con.execute("update outbox set sent = -1, last_error = ? where id = ?", (str(r)[:300], oid))
+                else:
+                    con.execute("update outbox set tries = tries + 1, last_error = ? where id = ?", (str(r)[:300], oid))
+            except Exception as e:  # сеть: попробуем снова на следующем круге
+                con.execute("update outbox set tries = tries + 1, last_error = ? where id = ?", (repr(e)[:300], oid))
+                con.commit()
+                break
+            con.commit()
+        con.close()
 
 
 def _watch_start():
@@ -107,30 +155,23 @@ def _watch_start():
     while TG_TOKEN and not chat_id():
         try:
             r = requests.get(f"https://api.telegram.org/bot{TG_TOKEN}/getUpdates",
-                             params={"timeout": 25, "offset": offset}, timeout=35).json()
+                             params={"timeout": 25, "offset": offset}, timeout=(6, 35)).json()
             for u in r.get("result", []):
                 offset = u["update_id"] + 1
                 m = u.get("message") or {}
                 if (m.get("text") or "").startswith("/start"):
                     with open(CHAT_FILE, "w") as f:
                         f.write(str(m["chat"]["id"]))
-                    _send(m["chat"]["id"], "✅ ATOMM подключён. Сюда будут приходить новые заказы.")
-                    return
+                    break
         except Exception:
             time.sleep(10)
+    if TG_TOKEN and chat_id() and not os.path.exists(WELCOME_FLAG):
+        notify("✅ ATOMM подключён. Сюда будут приходить новые заказы.")
+        open(WELCOME_FLAG, "w").close()
 
 
+threading.Thread(target=_sender, daemon=True).start()
 threading.Thread(target=_watch_start, daemon=True).start()
-
-
-def notify(text):
-    chat = chat_id()
-    if not (TG_TOKEN and chat):
-        return
-    try:
-        _send(chat, text)
-    except requests.RequestException:
-        pass
 
 
 def rub(n):
@@ -139,7 +180,14 @@ def rub(n):
 
 @app.get("/api/health")
 def health():
-    return {"ok": True, "items": len(catalog()), "telegram": bool(TG_TOKEN and chat_id())}
+    out = {"ok": True, "items": len(catalog()), "telegram": bool(TG_TOKEN and chat_id())}
+    try:
+        con = _outbox_db()
+        out["tg_queue"] = con.execute("select count(*) from outbox where sent = 0").fetchone()[0]
+        con.close()
+    except sqlite3.Error:
+        pass
+    return out
 
 
 @app.post("/api/order")
