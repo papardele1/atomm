@@ -34,6 +34,31 @@ if SITE and not os.path.exists(CATALOG):
     shutil.copy(os.path.join(SITE, "catalog.json"), CATALOG)
 os.makedirs(os.path.dirname(DB) or ".", exist_ok=True)
 
+
+def _clean_catalog():
+    """Убирает из уже собранного каталога товары, которые мы не продаём (правила в catalog_lib)."""
+    import sys
+    sys.path.insert(0, os.path.dirname(__file__))
+    import catalog_lib
+    try:
+        with open(CATALOG, encoding="utf-8") as f:
+            d = json.load(f)
+    except (OSError, ValueError):
+        return
+    keep = [i for i in d["items"] if not catalog_lib.is_excluded(i[4], d["subs"][i[3]])]
+    if len(keep) == len(d["items"]):
+        return
+    brands = sorted({d["brands"][i[2]] for i in keep if i[2] >= 0})
+    subs = sorted({d["subs"][i[3]] for i in keep})
+    bi = {b: k for k, b in enumerate(brands)}
+    si = {x: k for k, x in enumerate(subs)}
+    d["items"] = [[i[0], i[1], bi[d["brands"][i[2]]] if i[2] >= 0 else -1, si[d["subs"][i[3]]]] + i[4:] for i in keep]
+    d["brands"], d["subs"] = brands, subs
+    catalog_lib.write_atomic(d, CATALOG)
+
+
+_clean_catalog()
+
 app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
 _lock = threading.Lock()
 _cat = {"mtime": 0, "by_id": {}}
