@@ -317,4 +317,22 @@ if SITE:
     def catalog_file():
         return FileResponse(CATALOG, media_type="application/json", headers={"Cache-Control": "no-cache"})
 
+    IMG_DIR = os.environ.get("ATOMM_IMG", os.path.join(os.path.dirname(CATALOG), "img"))
+    os.makedirs(IMG_DIR, exist_ok=True)
+
+    @app.get("/img/index.json")
+    def img_index():
+        p = os.path.join(IMG_DIR, "index.json")
+        if not os.path.exists(p):
+            return JSONResponse({}, headers={"Cache-Control": "no-cache"})
+        return FileResponse(p, media_type="application/json", headers={"Cache-Control": "no-cache"})
+
+    class _ImgFiles(StaticFiles):  # фото неизменны (имя = хэш), кэшируем надолго
+        async def get_response(self, path, scope):
+            r = await super().get_response(path, scope)
+            if r.status_code == 200:
+                r.headers["Cache-Control"] = "public, max-age=2592000, immutable"
+            return r
+
+    app.mount("/img", _ImgFiles(directory=IMG_DIR), name="img")
     app.mount("/", StaticFiles(directory=SITE, html=True), name="site")

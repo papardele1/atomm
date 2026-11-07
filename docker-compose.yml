@@ -34,6 +34,18 @@ services:
     volumes:
       - www:/www
 
+  photos:
+    # официальные фото товаров: медленно добирает картинки с сайтов производителей (см. app/photos.py)
+    build:
+      context: .
+      dockerfile: Dockerfile.parser
+    restart: unless-stopped
+    command: ["sh", "-c", "until [ -f /www/img/ENABLED ]; do sleep 60; done; sleep 120; python /app/app/photos.py --loop"]
+    environment:
+      ATOMM_CATALOG: /www/catalog.json
+    volumes:
+      - www:/www
+
 volumes:
   www:
   data:
