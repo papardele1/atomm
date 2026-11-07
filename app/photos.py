@@ -476,7 +476,7 @@ def todo(state):
             continue
         seen.add(k)
         st = state.get(k)
-        if st and (st.get("f") or time.time() - st.get("t", 0) < RETRY_MISS_DAYS * 86400):
+        if st and (st.get("f") or st.get("block") or time.time() - st.get("t", 0) < RETRY_MISS_DAYS * 86400):
             continue
         out.append((k, name, brand, sec))
     return out
