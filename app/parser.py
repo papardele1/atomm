@@ -72,9 +72,12 @@ def pass_challenge():
             try:
                 page.goto(BASE + "/telefony_apple/", wait_until="domcontentloaded", timeout=90000)
                 for _ in range(45):
-                    if page.locator(".blocks_product").count() > 0:
-                        ok = True
-                        break
+                    try:  # во время проверки страница сама перезагружается — это нормально
+                        if page.locator(".blocks_product").count() > 0:
+                            ok = True
+                            break
+                    except Exception:  # noqa: BLE001
+                        pass
                     page.wait_for_timeout(1000)
             except Exception as e:  # noqa: BLE001
                 log.warning("браузер: %s", e)
