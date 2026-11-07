@@ -179,10 +179,12 @@ def _tg_once(method, via, kw, read=10):
 def _tg(method, read=10, **kw):
     """Связь с Telegram с сервера нестабильна: обычный ответ — 0,2 с, но часть соединений «зависает».
     Поэтому короткий таймаут и быстрые повторы, чередуя путь: сначала тот, что сработал последним,
-    затем другой (напрямую ↔ через прокси). До 6 попыток, в худшем случае ~20 секунд."""
+    затем другой (напрямую ↔ через прокси). До 9 попыток, в худшем случае ~40 секунд; при неудаче очередь повторит через 5 секунд."""
     first = _route["via"] if time.time() < _route["until"] else "direct"
     other = "proxy" if first == "direct" else "direct"
-    order = [first, other] * 3 if TG_PROXY else ["direct"] * 5
+    # Замер с сервера: напрямую проходит ~половина попыток, мобильный прокси до Telegram пока не доходит,
+    # поэтому основной путь повторяем чаще, а запасной вставляем через раз.
+    order = [first, first, other] * 3 if TG_PROXY else ["direct"] * 8
     err = None
     for i, via in enumerate(order):
         try:
@@ -192,7 +194,7 @@ def _tg(method, read=10, **kw):
             return r
         except requests.RequestException as e:
             err = e
-            time.sleep(0.3 * (i + 1))
+            time.sleep(0.3)
     raise err
 
 
