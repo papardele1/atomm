@@ -166,13 +166,38 @@ def notify(text):
     _wake.set()
 
 
+TG_PROXY = os.environ.get("TG_PROXY", "").strip()
+_route = {"via": "direct", "until": 0.0}  # какой путь сработал последним; держим его 10 минут
+
+
+def _tg_once(method, via, kw):
+    proxies = {"https": TG_PROXY, "http": TG_PROXY} if via == "proxy" else None
+    return requests.post(f"https://api.telegram.org/bot{TG_TOKEN}/{method}", json=kw,
+                         timeout=(5, 25), proxies=proxies).json()
+
+
 def _tg(method, **kw):
-    return requests.post(f"https://api.telegram.org/bot{TG_TOKEN}/{method}", json=kw, timeout=(6, 30)).json()
+    """Сначала путь, который сработал в прошлый раз; при сетевой ошибке — сразу другой (прокси ↔ напрямую)."""
+    first = _route["via"] if time.time() < _route["until"] else "direct"
+    order = [first] + ([v for v in ("direct", "proxy") if v != first] if TG_PROXY else [])
+    if not TG_PROXY:
+        order = ["direct"]
+    err = None
+    for via in order:
+        try:
+            r = _tg_once(method, via, kw)
+            _route.update(via=via, until=time.time() + 600)
+            r["_via"] = via
+            return r
+        except requests.RequestException as e:
+            err = e
+    raise err
 
 
 def _sender():
+    pending = False
     while True:
-        _wake.wait(20)
+        _wake.wait(5 if pending else 20)
         _wake.clear()
         chat = chat_id()
         if not (TG_TOKEN and chat):
@@ -183,7 +208,8 @@ def _sender():
             try:
                 r = _tg("sendMessage", chat_id=chat, text=text)
                 if r.get("ok"):
-                    con.execute("update outbox set sent = 1 where id = ?", (oid,))
+                    con.execute("update outbox set sent = 1, last_error = ? where id = ?",
+                                ("доставлено: " + ("через прокси" if r.get("_via") == "proxy" else "напрямую"), oid))
                 elif r.get("error_code") in (400, 403):  # чат недоступен — не повторяем бесконечно
                     con.execute("update outbox set sent = -1, last_error = ? where id = ?", (str(r)[:300], oid))
                 else:
@@ -193,6 +219,7 @@ def _sender():
                 con.commit()
                 break
             con.commit()
+        pending = bool(con.execute("select 1 from outbox where sent = 0 limit 1").fetchone())
         con.close()
 
 
@@ -201,8 +228,7 @@ def _watch_start():
     offset = None
     while TG_TOKEN and not chat_id():
         try:
-            r = requests.get(f"https://api.telegram.org/bot{TG_TOKEN}/getUpdates",
-                             params={"timeout": 25, "offset": offset}, timeout=(6, 35)).json()
+            r = _tg("getUpdates", timeout=20, offset=offset)
             for u in r.get("result", []):
                 offset = u["update_id"] + 1
                 m = u.get("message") or {}

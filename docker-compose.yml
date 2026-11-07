@@ -10,6 +10,7 @@ services:
     environment:
       TG_TOKEN: ${ATOMM_TG_TOKEN:-}
       TG_CHAT: ${ATOMM_TG_CHAT:-}
+      TG_PROXY: ${ATOMM_TG_PROXY:-}
     extra_hosts:
       # api.telegram.org по DNS из РФ недоступен (как и в mskm2bot)
       - "api.telegram.org:${TELEGRAM_API_IP:-149.154.167.220}"
