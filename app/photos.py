@@ -339,7 +339,10 @@ def save(im, key):
     return fn
 
 
-def find(name, brand_name):
+STRICT_COLOR = {"Смартфоны", "Планшеты", "Часы и браслеты"}
+
+
+def find(name, brand_name, sec=""):
     key, b, en, ru = key_of(name, brand_name)
     model = model_of(name)
     if not model or b not in SITES:
@@ -347,16 +350,27 @@ def find(name, brand_name):
     sites = SITES[b][0]
     tried = []
     col = en or ru or ""
-    for q in ([f"{model} {col}".strip()] + ([model] if col else [])):
+    chip = re.search(r"\((M\d(?:\s+(?:Pro|Max|Ultra))?|A\d\d\s*Pro)\b", name.replace("М", "M"))
+    qmodel = f"{model} {chip.group(1)}" if chip else model
+    strict = sec in STRICT_COLOR and bool(color_tokens(en, ru) or en)
+    queries = [f"{qmodel} {col}".strip()] + ([qmodel] if col and not strict else [])
+    for q in queries:
         for site in sites[:2]:
             cands = [c for c in yandex(f"{q} site:{site}") if official(c, b)]
             time.sleep(PAUSE + random.random() * 2)
-            cands.sort(key=lambda c: url_score(c, model, en, ru), reverse=True)
+            cands.sort(key=lambda c: url_score(c, qmodel, en, ru), reverse=True)
             best = None
             for c in cands[:5]:
-                sc = url_score(c, model, en, ru)
+                sc = url_score(c, qmodel, en, ru)
                 if sc < 1:
                     continue
+                if strict:  # цвет должен подтверждаться адресом или подписью картинки
+                    text = norm(c["url"] + " " + c["alt"])
+                    if not (any(x and norm(x) and norm(x) in text for x in (en, ru)) or (color_tokens(en, ru) & {k for k in COLORS if k in text})):
+                        continue
+                if chip and not re.search(re.escape(chip.group(1).replace(" ", "").lower()), norm(c["url"] + " " + c["alt"])) and \
+                        re.search(r"\bm\d\b", (c["url"] + " " + c["alt"]).lower()):
+                    continue  # на картинке явно другой чип
                 try:
                     im = fetch_img(c["url"])
                 except Exception:  # noqa: BLE001
@@ -445,7 +459,7 @@ def run(limit=None, sample=None):
     done = []
     for n, (k, name, brand, sec) in enumerate(work[:limit] if limit else work):
         try:
-            key, best, why = find(name, brand)
+            key, best, why = find(name, brand, sec)
         except Captcha:
             log.warning("капча Яндекса — пауза 15 минут")
             time.sleep(900)
