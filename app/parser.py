@@ -40,10 +40,60 @@ if PROXY:
     session.proxies = {"http": PROXY, "https": PROXY}
 
 
+def is_challenge(html):
+    """Store77 отдаёт ботам страницу-заглушку с JS-проверкой вместо сайта."""
+    return "gorizontal-vertikal" in html[:3000] and "blocks_product" not in html
+
+
+_cookie_lock = __import__("threading").Lock()
+_cookie_time = [0.0]
+
+
+def pass_challenge():
+    """Открывает сайт в headless-Chromium, ждёт прохождения проверки и переносит cookie в сессию."""
+    with _cookie_lock:
+        if time.time() - _cookie_time[0] < 60:  # другой поток только что обновил cookie
+            return True
+        from playwright.sync_api import sync_playwright
+        log.info("проходим проверку Store77 в браузере…")
+        with sync_playwright() as p:
+            kw = {"headless": True, "args": ["--disable-blink-features=AutomationControlled"]}
+            if PROXY:
+                from urllib.parse import urlparse
+                u = urlparse(PROXY)
+                kw["proxy"] = {"server": f"{u.scheme}://{u.hostname}:{u.port}",
+                               "username": u.username or "", "password": u.password or ""}
+            browser = p.chromium.launch(**kw)
+            ctx = browser.new_context(user_agent=session.headers["User-Agent"], locale="ru-RU",
+                                      viewport={"width": 1440, "height": 900})
+            page = ctx.new_page()
+            page.add_init_script("Object.defineProperty(navigator,'webdriver',{get:()=>undefined})")
+            ok = False
+            try:
+                page.goto(BASE + "/telefony_apple/", wait_until="domcontentloaded", timeout=90000)
+                for _ in range(45):
+                    if page.locator(".blocks_product").count() > 0:
+                        ok = True
+                        break
+                    page.wait_for_timeout(1000)
+            except Exception as e:  # noqa: BLE001
+                log.warning("браузер: %s", e)
+            for c in ctx.cookies():
+                session.cookies.set(c["name"], c["value"], domain=c.get("domain"), path=c.get("path", "/"))
+            browser.close()
+        _cookie_time[0] = time.time()
+        log.info("проверка %s", "пройдена" if ok else "НЕ пройдена")
+        return ok
+
+
 def get(url, tries=3):
     for i in range(tries):
         try:
             r = session.get(url, timeout=40)
+            if r.status_code == 200 and is_challenge(r.text):
+                log.warning("заглушка защиты на %s", url)
+                pass_challenge()
+                continue
             if r.status_code == 200:
                 return r.text
             log.warning("HTTP %s %s", r.status_code, url)
@@ -54,6 +104,7 @@ def get(url, tries=3):
 
 
 def discover_categories():
+    pass_challenge()
     html = get(BASE + "/")
     if not html:
         raise SystemExit("Главная Store77 недоступна")

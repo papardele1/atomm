@@ -24,3 +24,13 @@ for url in ["https://store77.net/", "https://store77.net/telefony_apple/"]:
             print("   начало ответа:", re.sub(r"\s+", " ", r.text[:400]))
     except Exception as e:  # noqa: BLE001
         print(mode, url, "ОШИБКА", repr(e)[:200])
+
+if os.environ.get("BROWSER"):
+    import parser as prs  # noqa: E402
+    if proxy:
+        prs.session.proxies = {"http": proxy, "https": proxy}
+        prs.PROXY = proxy
+    prs.logging.basicConfig(level=prs.logging.INFO)
+    ok = prs.pass_challenge()
+    html = prs.get("https://store77.net/telefony_apple/") or ""
+    print(mode + "+browser", "проверка:", ok, "карточек:", len(prs.parse_page(html)))
