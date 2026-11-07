@@ -67,6 +67,7 @@ def _clean_catalog():
             and secs[i[1]] in catalog_lib.SECTIONS]
     sec_idx = {n: k for k, n in enumerate(catalog_lib.SECTIONS)}
     rows = [[i[0], sec_idx[secs[i[1]]], brands[i[2]] if i[2] >= 0 else "", subs[i[3]]] + i[4:] for i in keep]
+    catalog_lib.resolve_subs(rows, lambda r: r[1], lambda r: r[4], lambda r: r[3], lambda r, v: r.__setitem__(3, v))
     catalog_lib.seniority_sort(rows, lambda r: (r[1], r[2], r[4], r[5]))
     new_brands = sorted({r[2] for r in rows if r[2]})
     new_subs = catalog_lib.order_subs(r[3] for r in rows)

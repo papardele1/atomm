@@ -103,6 +103,7 @@ def build(products):
                           brand=brand_of(p["name"]), sub=p.get("sub_name") or "Прочее", name=p["name"],
                           price=our_price(p.get("price")), stock=1 if p.get("in_stock") else 0,
                           cond=cond_of(p["name"])))
+    resolve_subs(goods, lambda g: g["section"], lambda g: g["name"], lambda g: g["sub"], lambda g, v: g.__setitem__("sub", v))
     seniority_sort(goods, lambda g: (SECTIONS.index(g["section"]), g["brand"], g["name"], g["price"]))
     brands = sorted({g["brand"] for g in goods if g["brand"]})
     subs = order_subs(g["sub"] for g in goods)  # в порядке старшинства товаров
@@ -244,6 +245,39 @@ def seniority_sort(rows, get):
 
     rows.sort(key=key)
     return rows
+
+
+_TIER_NEXT = re.compile(r"\s*(pro|max|plus|air|mini|ultra|fe|lite|neo|e\b|\+)", re.I)
+
+
+def resolve_subs(rows, sec_of, name_of, sub_of, set_sub):
+    """Товары из общего подраздела («Телефоны») переносит в подраздел своей модели того же раздела,
+    если его название целиком входит в название товара («Apple iPhone 18 Pro Max 2 ТБ…» → «Apple iPhone 18 Pro Max»).
+    Берётся самое длинное совпадение; «Apple iPhone 18» не подходит к «… 18 Pro …»."""
+    specific = {}
+    for r in rows:
+        sub = sub_of(r)
+        if re.search(r"[A-Za-z]", sub) and re.search(r"\d", sub):  # подраздел конкретной модели (с номером)
+            specific.setdefault(sec_of(r), set()).add(sub)
+    moved = 0
+    for r in rows:
+        if re.search(r"[A-Za-z0-9]", sub_of(r)):
+            continue
+        name = name_of(r).lower()
+        best = None
+        for sub in specific.get(sec_of(r), ()):
+            i = name.find(sub.lower())
+            if i < 0:
+                continue
+            j = i + len(sub)
+            if (i and name[i - 1].isalnum()) or (j < len(name) and name[j].isalnum()) or _TIER_NEXT.match(name[j:]):
+                continue
+            if not best or len(sub) > len(best):
+                best = sub
+        if best:
+            set_sub(r, best)
+            moved += 1
+    return moved
 
 
 def order_subs(subs_in_item_order):
