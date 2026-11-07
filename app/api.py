@@ -170,27 +170,29 @@ TG_PROXY = os.environ.get("TG_PROXY", "").strip()
 _route = {"via": "direct", "until": 0.0}  # какой путь сработал последним; держим его 10 минут
 
 
-def _tg_once(method, via, kw):
+def _tg_once(method, via, kw, read=10):
     proxies = {"https": TG_PROXY, "http": TG_PROXY} if via == "proxy" else None
     return requests.post(f"https://api.telegram.org/bot{TG_TOKEN}/{method}", json=kw,
-                         timeout=(5, 25), proxies=proxies).json()
+                         timeout=(3, read), proxies=proxies).json()
 
 
-def _tg(method, **kw):
-    """Сначала путь, который сработал в прошлый раз; при сетевой ошибке — сразу другой (прокси ↔ напрямую)."""
+def _tg(method, read=10, **kw):
+    """Связь с Telegram с сервера нестабильна: обычный ответ — 0,2 с, но часть соединений «зависает».
+    Поэтому короткий таймаут и быстрые повторы, чередуя путь: сначала тот, что сработал последним,
+    затем другой (напрямую ↔ через прокси). До 6 попыток, в худшем случае ~20 секунд."""
     first = _route["via"] if time.time() < _route["until"] else "direct"
-    order = [first] + ([v for v in ("direct", "proxy") if v != first] if TG_PROXY else [])
-    if not TG_PROXY:
-        order = ["direct"]
+    other = "proxy" if first == "direct" else "direct"
+    order = [first, other] * 3 if TG_PROXY else ["direct"] * 5
     err = None
-    for via in order:
+    for i, via in enumerate(order):
         try:
-            r = _tg_once(method, via, kw)
+            r = _tg_once(method, via, kw, read)
             _route.update(via=via, until=time.time() + 600)
             r["_via"] = via
             return r
         except requests.RequestException as e:
             err = e
+            time.sleep(0.3 * (i + 1))
     raise err
 
 
@@ -228,7 +230,7 @@ def _watch_start():
     offset = None
     while TG_TOKEN and not chat_id():
         try:
-            r = _tg("getUpdates", timeout=20, offset=offset)
+            r = _tg("getUpdates", read=30, timeout=20, offset=offset)
             for u in r.get("result", []):
                 offset = u["update_id"] + 1
                 m = u.get("message") or {}
