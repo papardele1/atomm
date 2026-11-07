@@ -127,8 +127,61 @@ def write_atomic(data, path):
 BRAND_ORDER = ["Apple", "Samsung", "Xiaomi", "Huawei", "Honor", "Google", "Nothing", "OnePlus", "Sony", "Dyson"]
 _TIERS = [(re.compile(r"pro\s*max|ultra", re.I), 5), (re.compile(r"\bpro\b", re.I), 4),
           (re.compile(r"\bair\b", re.I), 3), (re.compile(r"\bplus\b|\d\+", re.I), 2),
-          (re.compile(r"\bfe\b|\blite\b|\bmini\b|\bneo\b", re.I), 0.5)]
+          (re.compile(r"\bfe\+", re.I), 0.8), (re.compile(r"\bfe\b", re.I), 0.6),
+          (re.compile(r"\blite\b|\bmini\b|\bneo\b", re.I), 0.5)]
 _MEM = re.compile(r"(\d+)\s*/\s*(\d+)\s*(гб|тб|gb|tb)|(\d+(?:[.,]\d+)?)\s*(гб|тб|gb|tb|мм|mm|\"|дюйм)", re.I)
+
+
+# Линейки, где номер модели не равен поколению: переводим в год выхода,
+# чтобы «сначала новые, потом по старшинству» работало внутри всей линейки.
+_IPAD_CHIP_YEAR = {"pro": {5: 2025, 4: 2024, 2: 2022, 1: 2021}, "air": {4: 2026, 3: 2025, 2: 2024, 1: 2022}}
+
+
+def _special_model(n, core):
+    """(семейство, год/поколение, линейка) для iPad, Apple Watch, AirPods, Galaxy Watch/Tab — или None."""
+    year = re.search(r"\((20\d\d)\)", n)
+    year = int(year.group(1)) if year else None
+    if "ipad" in core:
+        chip = re.search(r"\bm(\d)\b", core)
+        if re.search(r"\bpro\b", core):
+            line, tier = "pro", 4.0
+        elif re.search(r"\bair\b", core):
+            line, tier = "air", 3.0
+        elif "mini" in core:
+            line, tier = "mini", 0.5
+        else:
+            line, tier = "base", 1.0
+        gen = year
+        if gen is None and chip and line in _IPAD_CHIP_YEAR:
+            gen = _IPAD_CHIP_YEAR[line].get(int(chip.group(1)))
+        if gen is None and line == "base":
+            m = re.search(r"ipad\s+(\d{1,2})\b", core)
+            gen = {11: 2025, 10: 2022, 9: 2021}.get(int(m.group(1))) if m else None
+        if gen is None and line == "mini":
+            gen = 2024 if re.search(r"a17|\b7\b", core) else 2021
+        size = re.search(r"\b(1[1-3])\b", core)
+        return "apple ipad", gen or 0, tier + (int(size.group(1)) / 100 if size else 0)
+    if "apple watch" in core:
+        m = re.search(r"series\s*(\d+)", core)
+        if m:
+            return "apple watch", 2014 + int(m.group(1)), 3.0
+        m = re.search(r"ultra\s*(\d*)", core)
+        if m:
+            return "apple watch", year or (2022 + int(m.group(1) or 1)), 5.0
+        m = re.search(r"\bse\s*(\d*)", core)
+        if m:
+            return "apple watch", year or {"3": 2025, "2": 2022}.get(m.group(1), 2020), 1.0
+        return "apple watch", year or 0, 2.0
+    if "airpods" in core:
+        line = "max" if "max" in core else "pro" if re.search(r"\bpro\b", core) else "base"
+        m = re.search(r"airpods\s+(?:pro\s+|max\s+)?(\d)", core)
+        return "airpods " + line, int(m.group(1)) if m else 1, 1.0
+    m = re.search(r"galaxy watch\s*(\d+)", core)
+    if m:
+        return "samsung galaxy watch", 2016 + int(m.group(1)), 4.0 if "classic" in core else 3.0
+    if "galaxy watch" in core:
+        return "samsung galaxy watch", year or 2024, 5.0 if "ultra" in core else 2.0
+    return None
 
 
 def model_info(name):
@@ -143,6 +196,9 @@ def model_info(name):
             v = float(m.group(4).replace(",", "."))
             storage = int(v * (1024 if m.group(5).lower() in ("тб", "tb") else 1))
     plain = _MEM.sub(" ", core)
+    sp = _special_model(n, core)
+    if sp:
+        return sp[0], sp[1], sp[2], storage
     year = re.search(r"\((20\d\d)\)", n)
     chip = re.search(r"\bm(\d)\b", re.split(r"цвет", n)[0])
     num = re.search(r"(?<![\d.])(\d{1,4})(e)?(?![\d.])", plain)
@@ -163,7 +219,8 @@ def model_info(name):
         gen, tier = 17, 3.0
     else:
         gen = 0
-    family = re.sub(r"\d+e\b|\d+|pro\s*max|ultra|\bpro\b|\bair\b|\bplus\b|\bfe\b|\blite\b|\bmini\b|\+", " ", plain)
+    family = re.sub(r"wi-?fi|\blte\b|\b5g\b|\b4g\b|cellular|сотовая связь|\bgps\b|\besim\b|\bnfc\b|\+\s*клавиатура|клавиатура", " ", plain)
+    family = re.sub(r"\d+e\b|\d+|pro\s*max|ultra|\bpro\b|\bair\b|\bplus\b|\bfe\b|\blite\b|\bmini\b|\+", " ", family)
     family = " ".join(family.split())
     return family, gen, tier, storage
 
