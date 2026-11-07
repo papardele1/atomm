@@ -144,6 +144,7 @@ form.co input:focus,form.co textarea:focus{border-color:rgba(28,30,33,.4)}
  .mimg{min-height:260px;border-radius:22px 22px 0 0}
  .top{flex-direction:column;align-items:flex-start}
 }
+.fscroll{max-height:236px;overflow:auto;padding-right:4px}
 </style>
 </head>
 <body>
@@ -158,6 +159,7 @@ form.co input:focus,form.co textarea:focus{border-color:rgba(28,30,33,.4)}
   <aside id="aside">
     <div class="fgroup"><div class="ftitle mono">Разделы</div><div class="seclist" id="secs"></div></div>
     <div class="fgroup"><div class="ftitle mono">Бренд</div><div class="brandlist" id="brands"></div></div>
+    <div id="facets"></div>
     <div class="fgroup"><div class="ftitle mono">Цена, ₽</div><div class="price"><input id="pmin" inputmode="numeric" placeholder="от"><input id="pmax" inputmode="numeric" placeholder="до"></div></div>
     <div class="fgroup"><div class="ftitle mono">Наличие</div>
       <label class="chk"><input type="checkbox" id="fStock" checked> Только в наличии</label>
@@ -194,7 +196,7 @@ const $=s=>document.querySelector(s);
 const fmt=n=>n.toLocaleString('ru-RU').replace(/,/g,' ')+' ₽';
 const esc=s=>s.replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 let D=null,ITEMS=[],IDS=[],IDX={};
-const S={sec:-1,brands:new Set(),sub:-1,q:'',pmin:0,pmax:0,stock:true,onlyNew:false,sort:'pop',shown:48};
+const S={sec:-1,brands:new Set(),f:{},sub:-1,q:'',pmin:0,pmax:0,stock:true,onlyNew:false,sort:'pop',shown:48};
 
 /* ---------- colours from product names ---------- */
 const COL=[[/глубок\S* син|deep blue|тёмно-син|темно-син|midnight|полночь/i,'#2f3d57'],[/космич\S* оранж|cosmic orange|оранж|orange/i,'#d77436'],
@@ -262,9 +264,65 @@ function deliveryWhen(){
 let tt;function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('show');clearTimeout(tt);tt=setTimeout(()=>t.classList.remove('show'),1800);}
 
 /* ---------- filtering ---------- */
+
+const cap=s=>s?s.charAt(0).toUpperCase()+s.slice(1):s;
+function memVal(n,u){n=+n;return /т/i.test(u)?n*1024:n;}
+function memLbl(v){return v>=1024?(v/1024)+' ТБ':v+' ГБ';}
+function cleanColor(c){c=c.replace(/\s+/g,' ').trim().replace(/[,;.\s]+$/,'');if(!c||c.length>32)return '';return cap(c.toLowerCase());}
+function attrsOf(sec,name,brand){
+  const n=name.replace(/М(?=\d)/g,'M').replace(/[ТT]Б/g,'ТБ').replace(/\bGb\b/gi,'ГБ').replace(/\bTb\b/gi,'ТБ').replace(/с Touch ID\s*/i,'');const a={};
+  let m;
+  if(sec==='Смартфоны'){
+    if(!/^(телефон|смартфон)/i.test(n))return a;
+    m=n.match(/\d+\s*\/\s*(\d+)\s*(ГБ|ТБ)/i)||n.match(/(\d+)\s*(ГБ|ТБ)/i);
+    if(m)a.mem=memVal(m[1],m[2]);
+    m=n.match(/цвет:?\s+([^(,]+)/i)||n.match(/\(([А-Яа-яЁё][А-Яа-яЁё\- ]+)\)\s*$/);if(m)a.color=cleanColor(m[1]);
+    if(/dual\s*sim|две\s*sim|2\s*sim|две физ/i.test(n))a.sim='2 nano-SIM';
+    else if(/esim\s*\(электрон|только esim|esim only/i.test(n))a.sim='Только eSIM';
+    else if(/iphone/i.test(n))a.sim='nano-SIM + eSIM';
+  } else if(sec==='Ноутбуки и компьютеры'){
+    m=n.match(/\b(M\d)(\s+(?:Pro|Max|Ultra))?\b/);
+    if(m)a.chip=('Apple '+m[1]+(m[2]||'')).replace(/\s+/g,' ');
+    else if(m=n.match(/\bA1\d\s*Pro\b/i))a.chip='Apple '+m[0].replace(/\s+/,' ');
+    else if(m=n.match(/Core\s+Ultra\s+(\d)/i))a.chip='Intel Core Ultra '+m[1];
+    else if(m=n.match(/Core\s+(i\d)/i))a.chip='Intel Core '+m[1].toLowerCase();
+    else if(m=n.match(/Ryzen\s+(AI\s+)?(?:Max\+?\s+|Z\d\s+)?(\d)/i))a.chip='AMD Ryzen '+(m[1]?'AI ':'')+m[2];
+    else if(m=n.match(/Snapdragon\s+X\s*(Elite|Plus)?/i))a.chip='Snapdragon X'+(m[1]?' '+cap(m[1].toLowerCase()):'');
+    else if(/celeron/i.test(n))a.chip='Intel Celeron';
+    // ssd
+    m=n.match(/(\d+)\s*(ГБ|ТБ)\s*SSD/i);if(m)a.ssd=memVal(m[1],m[2]);
+    // ram
+    m=n.match(/(\d+)\s*\/\s*\d+\s*(?:ГБ|ТБ)\s*SSD/i);
+    if(m)a.ram=+m[1];
+    else if(m=n.match(/(\d+)\s*ГБ\s*,\s*\d+\s*(?:ГБ|ТБ)\s*SSD/i))a.ram=+m[1];
+    if(a.ram&&(a.ram<4||a.ram>256))delete a.ram;
+    // colour
+    m=n.match(/цвет:\s*([^(,]+)/i);
+    if(m)a.color=cleanColor(m[1]);
+    else if(m=n.match(/SSD\)?\s*,?\s*([А-Яа-яЁё][А-Яа-яЁё\- ]+?)\s*(?:\(|[A-Z0-9]{4,}|$)/))a.color=cleanColor(m[1]);
+    else if(m=n.match(/\(([А-Яа-яЁё][А-Яа-яЁё\- ]+)\)/))a.color=cleanColor(m[1]);
+    if(a.color&&/ssd|ram|гб|клав|ru\b|dos|windows/i.test(a.color))delete a.color;
+  }
+  return a;
+}
+
+const FACETS={'Смартфоны':[['mem','Встроенная память'],['sim','SIM-карта'],['color','Цвет']],
+  'Ноутбуки и компьютеры':[['chip','Чип / процессор'],['ram','Оперативная память'],['ssd','Накопитель SSD'],['color','Цвет']]};
+const SIM_ORDER=['nano-SIM + eSIM','Только eSIM','2 nano-SIM'];
+const SIM_LBL={'nano-SIM + eSIM':'nano-SIM + eSIM','Только eSIM':'Только eSIM','2 nano-SIM':'Две физические SIM'};
+let ATTR=[];
+function facetLbl(k,v){if(k==='mem'||k==='ssd')return memLbl(v);if(k==='ram')return v+' ГБ';if(k==='sim')return SIM_LBL[v]||v;return v;}
+function chipKey(v){const ap=v.startsWith('Apple')?0:1;const m=v.match(/(\d+)/);const t=/Max/.test(v)?3:/Pro/.test(v)?2:/Ultra/.test(v)?4:1;return [ap,v.replace(/\d.*$/,''),m?+m[1]:0,t];}
+function facetSort(k,vals,cnt){
+  if(k==='mem'||k==='ram'||k==='ssd')return vals.sort((a,b)=>a-b);
+  if(k==='sim')return vals.sort((a,b)=>SIM_ORDER.indexOf(a)-SIM_ORDER.indexOf(b));
+  if(k==='chip')return vals.sort((a,b)=>{const x=chipKey(a),y=chipKey(b);for(let i=0;i<4;i++){if(x[i]<y[i])return -1;if(x[i]>y[i])return 1;}return 0;});
+  return vals.sort((a,b)=>cnt[b]-cnt[a]||String(a).localeCompare(String(b),'ru'));
+}
 const norm=s=>s.toLowerCase().replace(/ё/g,'е');
 let NAMES=[];
-function baseFiltered(ignoreBrand,ignoreSub){
+function baseFiltered(ignoreBrand,ignoreSub,ignoreFacet){
+  const fk=Object.keys(S.f).filter(k=>k!==ignoreFacet&&S.f[k].size);
   const words=norm(S.q).split(/\s+/).filter(Boolean);
   const res=[];
   for(let i=0;i<ITEMS.length;i++){const it=ITEMS[i];
@@ -272,6 +330,7 @@ function baseFiltered(ignoreBrand,ignoreSub){
     if(!ignoreSub&&S.sub>=0&&it[2]!==S.sub)continue;
     if(!ignoreBrand&&S.brands.size&&!S.brands.has(it[1]))continue;
     if(S.stock&&!it[5])continue;
+    if(fk.length){const a=ATTR[i];let ok=true;for(const k of fk)if(!S.f[k].has(a[k])){ok=false;break;}if(!ok)continue;}
     if(S.onlyNew&&it[6]!==0)continue;
     if(S.pmin&&it[4]<S.pmin)continue;
     if(S.pmax&&it[4]>S.pmax)continue;
@@ -292,6 +351,15 @@ function render(){
   const bc={};for(const i of baseFiltered(true,false)){const b=ITEMS[i][1];if(b>=0)bc[b]=(bc[b]||0)+1;}
   const bl=Object.keys(bc).map(Number).sort((a,b)=>bc[b]-bc[a]);
   $('#brands').innerHTML=bl.length?bl.map(b=>`<label class="chk"><input type="checkbox" data-brand="${b}" ${S.brands.has(b)?'checked':''}> ${D.brands[b]} <span class="c">${bc[b]}</span></label>`).join(''):'<div class="note">—</div>';
+  // product facets (memory, SIM, colour, chip...)
+  const fdef=S.sec>=0?FACETS[D.sections[S.sec]]:null;let fh='';
+  if(fdef)for(const [k,title] of fdef){const cnt={};for(const i of baseFiltered(false,false,k)){const v=ATTR[i][k];if(v!==undefined)cnt[v]=(cnt[v]||0)+1;}
+    const sel=S.f[k]||new Set();for(const v of sel)if(!(v in cnt))cnt[v]=0;
+    const vals=facetSort(k,Object.keys(cnt).map(v=>(k==='mem'||k==='ram'||k==='ssd')?+v:v),cnt);
+    if(vals.length<2&&!sel.size)continue;
+    const many=vals.length>8;
+    fh+=`<div class="fgroup"><div class="ftitle mono">${title}</div><div class="brandlist${many?' fscroll':''}">`+vals.map(v=>`<label class="chk"><input type="checkbox" data-facet="${k}" data-val="${esc(String(v))}" ${sel.has(v)?'checked':''}> ${esc(facetLbl(k,v))} <span class="c">${cnt[v]}</span></label>`).join('')+`</div></div>`;}
+  $('#facets').innerHTML=fh;
   // subs chips (only when a section is chosen)
   if(S.sec>=0){const sc={};for(const i of baseFiltered(false,true)){const s=ITEMS[i][2];sc[s]=(sc[s]||0)+1;}
     const sl=Object.keys(sc).map(Number).sort((a,b)=>a-b).slice(0,40); // подразделы уже по старшинству
@@ -375,7 +443,7 @@ document.addEventListener('click',e=>{
   if(t.dataset.add!==undefined){e.stopPropagation();addToCart(+t.dataset.add,t.classList.contains('add')?t:null);return;}
   if(t.dataset.buy!==undefined){const id=IDS[+t.dataset.buy];cart[id]=cart[id]||1;saveCart();updCartBtn();$('#modal').classList.remove('show');openCart('checkout');return;}
   if(t.dataset.close!==undefined){closeAll();return;}
-  if(t.dataset.sec!==undefined){S.sec=+t.dataset.sec;S.sub=-1;S.brands.clear();S.shown=48;render();scrollTo({top:0,behavior:'smooth'});return;}
+  if(t.dataset.sec!==undefined){S.sec=+t.dataset.sec;S.sub=-1;S.brands.clear();S.f={};S.shown=48;render();scrollTo({top:0,behavior:'smooth'});return;}
   if(t.dataset.sub!==undefined){S.sub=+t.dataset.sub;S.shown=48;render();return;}
   if(t.dataset.inc!==undefined){cart[t.dataset.inc]++;saveCart();updCartBtn();openCart();return;}
   if(t.dataset.dec!==undefined){const k=t.dataset.dec;cart[k]--;if(cart[k]<=0)delete cart[k];saveCart();updCartBtn();openCart();return;}
@@ -390,6 +458,7 @@ document.addEventListener('click',e=>{
 });
 document.addEventListener('change',e=>{const t=e.target;
   if(t.dataset.brand!==undefined){const b=+t.dataset.brand;t.checked?S.brands.add(b):S.brands.delete(b);S.shown=48;render();}
+  if(t.dataset.facet!==undefined){const k=t.dataset.facet;const raw=t.dataset.val;const v=(k==='mem'||k==='ram'||k==='ssd')?+raw:raw;S.f[k]=S.f[k]||new Set();t.checked?S.f[k].add(v):S.f[k].delete(v);S.shown=48;render();}
   if(t.id==='fStock'){S.stock=t.checked;S.shown=48;render();}
   if(t.id==='fNew'){S.onlyNew=t.checked;S.shown=48;render();}
   if(t.id==='sort'){S.sort=t.value;render();}
@@ -397,7 +466,7 @@ document.addEventListener('change',e=>{const t=e.target;
 let qt;$('#q').addEventListener('input',e=>{clearTimeout(qt);qt=setTimeout(()=>{S.q=e.target.value.trim();S.shown=48;render();},160);});
 ['pmin','pmax'].forEach(id=>$('#'+id).addEventListener('input',e=>{clearTimeout(qt);qt=setTimeout(()=>{S[id]=+e.target.value.replace(/\D/g,'')||0;S.shown=48;render();},300);}));
 $('#more').addEventListener('click',()=>{S.shown+=48;render();});
-$('#reset').addEventListener('click',()=>{Object.assign(S,{sec:-1,sub:-1,q:'',pmin:0,pmax:0,stock:true,onlyNew:false,shown:48});S.brands.clear();$('#q').value='';$('#pmin').value='';$('#pmax').value='';$('#fStock').checked=true;render();});
+$('#reset').addEventListener('click',()=>{Object.assign(S,{sec:-1,sub:-1,q:'',pmin:0,pmax:0,stock:true,onlyNew:false,shown:48});S.brands.clear();S.f={};$('#q').value='';$('#pmin').value='';$('#pmax').value='';$('#fStock').checked=true;render();});
 $('#ov').addEventListener('click',closeAll);
 $('#dClose').addEventListener('click',closeAll);
 $('#cartOpen').addEventListener('click',()=>openCart());
@@ -419,7 +488,7 @@ function applyHash(){
   if(p.sec!=null)S.sec=p.sec;if(p.b&&br(p.b)>=0)S.brands.add(br(p.b));if(p.q){S.q=p.q;$('#q').value=p.q;}
 }
 
-fetch('catalog.json',{cache:'no-cache'}).then(r=>r.json()).then(d=>{D=d;IDS=d.items.map(r=>r[0]);ITEMS=d.items.map(r=>r.slice(1));IDS.forEach((id,i)=>IDX[id]=i);NAMES=ITEMS.map(it=>norm(it[3]+' '+(it[1]>=0?d.brands[it[1]]:'')+' '+d.subs[it[2]]));
+fetch('catalog.json',{cache:'no-cache'}).then(r=>r.json()).then(d=>{D=d;IDS=d.items.map(r=>r[0]);ITEMS=d.items.map(r=>r.slice(1));IDS.forEach((id,i)=>IDX[id]=i);ATTR=ITEMS.map(it=>attrsOf(d.sections[it[0]],it[3]));NAMES=ITEMS.map(it=>norm(it[3]+' '+(it[1]>=0?d.brands[it[1]]:'')+' '+d.subs[it[2]]));
   applyHash();updCartBtn();render();}).catch(()=>{$('#grid').innerHTML='<div class="empty">Не удалось загрузить каталог.</div>';});
 })();
 </script>
