@@ -50,6 +50,7 @@
     '<nav class="mlinks">' + LINKS.map(function (l) {
       return '<a href="' + l[1] + '"' + (l[1] === here ? ' class="on"' : '') + '>' + l[0] + '</a>';
     }).join('') + '</nav>' +
+    '<div style="margin-top:14px;font-size:13px"><a href="offer.html" style="color:#55595f;margin-right:18px">Оферта</a><a href="privacy.html" style="color:#55595f">Политика конфиденциальности</a></div>' +
     '<a class="mphone" href="tel:' + PHONE + '">' + PHONE_TXT + '</a>' +
     '<div class="mcontacts">' +
     '<a href="tel:' + PHONE + '"><i style="background:#1c1e21">' + ICONS.call + '</i>Позвонить</a>' +
@@ -64,4 +65,18 @@
   menu.querySelector('.mclose').addEventListener('click', close);
   menu.querySelectorAll('nav.mlinks a').forEach(function (a) { a.addEventListener('click', close); });
   addEventListener('keydown', function (e) { if (e.key === 'Escape') close(); });
+  /* Подвал с реквизитами продавца — на всех страницах, кроме главной. */
+  if (here !== 'index.html' && here !== '') {
+    var fs = document.createElement('style');
+    fs.textContent = '.sitefoot{border-top:1px solid rgba(28,30,33,.13);margin-top:40px;padding:22px 32px calc(26px + env(safe-area-inset-bottom));' +
+      'font:12px/1.6 Inter,system-ui,sans-serif;color:#6b6f75;display:flex;flex-wrap:wrap;gap:6px 22px;justify-content:space-between}' +
+      '.sitefoot a{color:#33363a;text-decoration:none;margin-right:16px;white-space:nowrap}.sitefoot a:hover{text-decoration:underline}' +
+      '@media(max-width:600px){.sitefoot{padding:20px 18px calc(24px + env(safe-area-inset-bottom))}}';
+    document.head.appendChild(fs);
+    var f = document.createElement('footer');
+    f.className = 'sitefoot';
+    f.innerHTML = '<div>ИП Головин Руслан Андреевич · ИНН 502716211095 · ОГРНИП 322508100573880</div>' +
+      '<div><a href="offer.html">Публичная оферта</a><a href="privacy.html">Политика конфиденциальности</a><a href="tel:' + PHONE + '">' + PHONE_TXT + '</a></div>';
+    document.body.appendChild(f);
+  }
 })();

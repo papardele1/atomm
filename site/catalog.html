@@ -2,6 +2,7 @@
 <html lang="ru">
 <head>
 <meta charset="utf-8">
+<meta name="description" content="Каталог ATOMM: смартфоны, ноутбуки, планшеты, часы, наушники, приставки и техника Dyson. Только новая оригинальная техника, доставка по Москве.">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Каталог — ATOMM</title>
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
@@ -456,7 +457,7 @@ function openCart(step){
       <div class="paysel"><label class="payopt on"><input type="radio" name="pay" value="cash" checked><div>Наличными при получении<small>Курьеру при доставке</small></div></label>
       <label class="payopt"><input type="radio" name="pay" value="card"><div>Картой онлайн<small>Visa, Mastercard, МИР</small></div></label></div>
       <div class="warn" id="warn">Оплата картой по техническим причинам временно недоступна. Пожалуйста, выберите оплату наличными при получении.</div>
-      <label class="chk" style="font-size:12.5px;align-items:flex-start;color:var(--mute)"><input type="checkbox" name="consent" required style="margin-top:2px"> <span>Согласен на обработку персональных данных в соответствии с <a href="privacy.html" target="_blank">политикой конфиденциальности</a></span></label>
+      <label class="chk" style="font-size:12.5px;align-items:flex-start;color:var(--mute)"><input type="checkbox" name="consent" required style="margin-top:2px"> <span>Принимаю условия <a href="offer.html" target="_blank">публичной оферты</a> и даю согласие на обработку персональных данных в соответствии с <a href="privacy.html" target="_blank">политикой конфиденциальности</a></span></label>
       <div class="warn" id="err"></div></form>`;
     $('#dFoot').innerHTML=`<div class="total" style="font-size:13px;color:var(--mute)"><span>Товары · ${t.n} шт.</span><span>${fmt(t.s)}</span></div><div class="total" style="font-size:13px;color:var(--mute)"><span>Доставка</span><span>${fmt(DELIVERY)}</span></div><div class="total"><span class="mono">Итого</span><b>${fmt(t.s+DELIVERY)}</b></div><button class="btn" id="place">Подтвердить заказ</button><button class="btn ghost" id="back">Назад в корзину</button>`;
   } else { $('#dTitle').textContent='Корзина';

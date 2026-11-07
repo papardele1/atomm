@@ -1,0 +1,6 @@
+User-agent: *
+Allow: /
+Disallow: /api/
+
+Host: https://atomm.store
+Sitemap: https://atomm.store/sitemap.xml
