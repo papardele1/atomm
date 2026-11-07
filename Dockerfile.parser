@@ -1,0 +1,9 @@
+# Парсер цен: нужен браузер, чтобы пройти JS-защиту Store77.
+# Тот же базовый образ, что у воркера mskm2bot (уже есть на сервере, браузеры внутри).
+FROM mcr.microsoft.com/playwright/python:v1.48.0-noble
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt playwright==1.48.0
+COPY app ./app
+ENV ATOMM_CATALOG=/www/catalog.json PYTHONUNBUFFERED=1
+CMD ["sh", "-c", "sleep 60; while true; do python /app/app/parser.py; sleep 14400; done"]

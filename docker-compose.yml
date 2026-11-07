@@ -22,10 +22,12 @@ services:
         aliases: [atomm-api]
 
   parser:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile.parser
     restart: unless-stopped
-    # первый сбор через минуту после старта, дальше каждые 4 часа
-    command: ["sh", "-c", "sleep 60; while true; do python /app/app/parser.py; sleep 14400; done"]
+    shm_size: 1gb
+    # первый сбор через минуту после старта, дальше каждые 4 часа (см. Dockerfile.parser)
     environment:
       ATOMM_PROXY: ${ATOMM_PROXY:-}
     volumes:
