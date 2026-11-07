@@ -53,7 +53,7 @@ os.makedirs(os.path.dirname(DB) or ".", exist_ok=True)
 
 
 def _clean_catalog():
-    """Убирает из уже собранного каталога товары, которые мы не продаём (правила в catalog_lib)."""
+    """Приводит уже собранный каталог к текущим правилам: исключения (catalog_lib) и порядок по старшинству."""
     import sys
     sys.path.insert(0, os.path.dirname(__file__))
     import catalog_lib
@@ -62,20 +62,20 @@ def _clean_catalog():
             d = json.load(f)
     except (OSError, ValueError):
         return
-    keep = [i for i in d["items"] if not catalog_lib.is_excluded(i[4], d["subs"][i[3]])
-            and d["sections"][i[1]] in catalog_lib.SECTIONS]
-    if len(keep) == len(d["items"]) and d["sections"] == catalog_lib.SECTIONS:
-        return
+    secs, brands, subs = d["sections"], d["brands"], d["subs"]
+    keep = [i for i in d["items"] if not catalog_lib.is_excluded(i[4], subs[i[3]])
+            and secs[i[1]] in catalog_lib.SECTIONS]
     sec_idx = {n: k for k, n in enumerate(catalog_lib.SECTIONS)}
-    old_sections = d["sections"]
-    d["sections"] = catalog_lib.SECTIONS
-    brands = sorted({d["brands"][i[2]] for i in keep if i[2] >= 0})
-    subs = sorted({d["subs"][i[3]] for i in keep})
-    bi = {b: k for k, b in enumerate(brands)}
-    si = {x: k for k, x in enumerate(subs)}
-    d["items"] = [[i[0], sec_idx[old_sections[i[1]]], bi[d["brands"][i[2]]] if i[2] >= 0 else -1,
-                   si[d["subs"][i[3]]]] + i[4:] for i in keep]
-    d["brands"], d["subs"] = brands, subs
+    rows = [[i[0], sec_idx[secs[i[1]]], brands[i[2]] if i[2] >= 0 else "", subs[i[3]]] + i[4:] for i in keep]
+    catalog_lib.seniority_sort(rows, lambda r: (r[1], r[2], r[4], r[5]))
+    new_brands = sorted({r[2] for r in rows if r[2]})
+    new_subs = catalog_lib.order_subs(r[3] for r in rows)
+    bi = {b: k for k, b in enumerate(new_brands)}
+    si = {x: k for k, x in enumerate(new_subs)}
+    items = [[r[0], r[1], bi[r[2]] if r[2] else -1, si[r[3]]] + r[4:] for r in rows]
+    if items == d["items"] and d["sections"] == catalog_lib.SECTIONS and new_subs == subs:
+        return
+    d.update(sections=catalog_lib.SECTIONS, brands=new_brands, subs=new_subs, items=items)
     catalog_lib.write_atomic(d, CATALOG)
 
 

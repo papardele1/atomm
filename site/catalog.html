@@ -294,7 +294,7 @@ function render(){
   $('#brands').innerHTML=bl.length?bl.map(b=>`<label class="chk"><input type="checkbox" data-brand="${b}" ${S.brands.has(b)?'checked':''}> ${D.brands[b]} <span class="c">${bc[b]}</span></label>`).join(''):'<div class="note">—</div>';
   // subs chips (only when a section is chosen)
   if(S.sec>=0){const sc={};for(const i of baseFiltered(false,true)){const s=ITEMS[i][2];sc[s]=(sc[s]||0)+1;}
-    const sl=Object.keys(sc).map(Number).sort((a,b)=>sc[b]-sc[a]).slice(0,40);
+    const sl=Object.keys(sc).map(Number).sort((a,b)=>a-b).slice(0,40); // подразделы уже по старшинству
     $('#subs').innerHTML=sl.length>1?`<button data-sub="-1" class="${S.sub<0?'on':''}">Все</button>`+sl.map(s=>`<button data-sub="${s}" class="${S.sub===s?'on':''}">${esc(D.subs[s])}</button>`).join(''):'';
   } else $('#subs').innerHTML='';
   $('#title').textContent=S.q?`«${S.q}»`:(S.sec>=0?D.sections[S.sec]:'Каталог');

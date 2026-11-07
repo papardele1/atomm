@@ -102,9 +102,9 @@ def build(products):
                           brand=brand_of(p["name"]), sub=p.get("sub_name") or "Прочее", name=p["name"],
                           price=our_price(p.get("price")), stock=1 if p.get("in_stock") else 0,
                           cond=cond_of(p["name"])))
-    goods.sort(key=lambda g: (SECTIONS.index(g["section"]), g["brand"] or "яя", g["sub"], -g["price"]))
+    seniority_sort(goods, lambda g: (SECTIONS.index(g["section"]), g["brand"], g["name"], g["price"]))
     brands = sorted({g["brand"] for g in goods if g["brand"]})
-    subs = sorted({g["sub"] for g in goods})
+    subs = order_subs(g["sub"] for g in goods)  # в порядке старшинства товаров
     bi = {b: i for i, b in enumerate(brands)}
     si = {s: i for i, s in enumerate(subs)}
     items = [[g["id"], SECTIONS.index(g["section"]), bi.get(g["brand"], -1), si[g["sub"]], g["name"],
@@ -120,3 +120,76 @@ def write_atomic(data, path):
         json.dump(data, f, ensure_ascii=False, separators=(",", ":"))
     os.chmod(tmp, 0o644)
     os.replace(tmp, path)
+
+
+# ---------- порядок «по старшинству» ----------
+BRAND_ORDER = ["Apple", "Samsung", "Xiaomi", "Huawei", "Honor", "Google", "Nothing", "OnePlus", "Sony", "Dyson"]
+_TIERS = [(re.compile(r"pro\s*max|ultra", re.I), 5), (re.compile(r"\bpro\b", re.I), 4),
+          (re.compile(r"\bair\b", re.I), 3), (re.compile(r"\bplus\b|\d\+", re.I), 2),
+          (re.compile(r"\bfe\b|\blite\b|\bmini\b|\bneo\b", re.I), 0.5)]
+_MEM = re.compile(r"(\d+)\s*/\s*(\d+)\s*(гб|тб|gb|tb)|(\d+(?:[.,]\d+)?)\s*(гб|тб|gb|tb|мм|mm|\"|дюйм)", re.I)
+
+
+def model_info(name):
+    """(семейство, поколение, линейка, память ГБ) из названия товара."""
+    n = name.lower().replace("ё", "е").replace("м", "m") if re.search(r"\bм\d", name.lower()) else name.lower().replace("ё", "е")
+    core = re.split(r",|\(|цвет", n)[0]
+    storage = 0
+    for m in _MEM.finditer(core):
+        if m.group(3):
+            storage = int(m.group(2)) * (1024 if m.group(3).lower() in ("тб", "tb") else 1)
+        elif m.group(5) and m.group(5).lower() in ("гб", "тб", "gb", "tb"):
+            v = float(m.group(4).replace(",", "."))
+            storage = int(v * (1024 if m.group(5).lower() in ("тб", "tb") else 1))
+    plain = _MEM.sub(" ", core)
+    year = re.search(r"\((20\d\d)\)", n)
+    chip = re.search(r"\bm(\d)\b", re.split(r"цвет", n)[0])
+    num = re.search(r"(?<![\d.])(\d{1,4})(e)?(?![\d.])", plain)
+    tier = 1.0
+    for rx, t in _TIERS:
+        if rx.search(plain):
+            tier = t
+            break
+    if year:
+        gen = int(year.group(1))
+    elif chip:
+        gen = int(chip.group(1))
+    elif num:
+        gen = int(num.group(1))
+        if num.group(2):
+            tier = 0.0  # iPhone 16e / 17e — младшая модель поколения
+    elif "iphone air" in plain:
+        gen, tier = 17, 3.0
+    else:
+        gen = 0
+    family = re.sub(r"\d+e\b|\d+|pro\s*max|ultra|\bpro\b|\bair\b|\bplus\b|\bfe\b|\blite\b|\bmini\b|\+", " ", plain)
+    family = " ".join(family.split())
+    return family, gen, tier, storage
+
+
+def seniority_sort(rows, get):
+    """rows — любые записи; get(row) -> (section_index, brand, name, price). Сортирует на месте."""
+    infos = {}
+    fam_top = {}
+    for r in rows:
+        sec, brand, name, price = get(r)
+        fam, gen, tier, mem = model_info(name)
+        infos[id(r)] = (fam, gen, tier, mem)
+        k = (sec, brand, fam)
+        fam_top[k] = max(fam_top.get(k, 0), price or 0)
+
+    def key(r):
+        sec, brand, name, price = get(r)
+        fam, gen, tier, mem = infos[id(r)]
+        bo = BRAND_ORDER.index(brand) if brand in BRAND_ORDER else (len(BRAND_ORDER) if brand else 999)
+        return (sec, bo, brand, -fam_top[(sec, brand, fam)], fam, -gen, -tier, mem, price or 0, name)
+
+    rows.sort(key=key)
+    return rows
+
+
+def order_subs(subs_in_item_order):
+    """Подразделы по старшинству товаров; общие («Телефоны», «Аксессуары» — без латиницы и цифр) — в конец."""
+    subs = list(dict.fromkeys(subs_in_item_order))
+    generic = [x for x in subs if not re.search(r"[A-Za-z0-9]", x)]
+    return [x for x in subs if x not in generic] + generic
