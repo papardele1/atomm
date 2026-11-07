@@ -343,10 +343,35 @@ def packshot_score(im):
     return clean / max(len(pts), 1)
 
 
+def remove_bg(im):
+    """Делает однотонный светлый фон кадра прозрачным (заливка от краёв), чтобы товар лежал на сером фоне сайта."""
+    from PIL import ImageChops, ImageFilter
+    im = im.convert("RGBA")
+    w, h = im.size
+    rgb = im.convert("RGB")
+    corners = [rgb.getpixel(p) for p in ((0, 0), (w - 1, 0), (0, h - 1), (w - 1, h - 1))]
+    bg = tuple(sorted(c[i] for c in corners)[1] for i in range(3))
+    if min(bg) < 200 or max(bg) - min(bg) > 20:  # фон не светлый однотонный — не трогаем
+        return im
+    near = ImageChops.difference(rgb, Image.new("RGB", rgb.size, bg)).convert("L").point(lambda v: 255 if v < 14 else 0)
+    step = max(1, min(w, h) // 60)
+    for x in range(0, w, step):
+        for y in (0, h - 1):
+            if near.getpixel((x, y)) == 255:
+                ImageDraw.floodfill(near, (x, y), 128)
+    for y in range(0, h, step):
+        for x in (0, w - 1):
+            if near.getpixel((x, y)) == 255:
+                ImageDraw.floodfill(near, (x, y), 128)
+    mask = near.point(lambda v: 0 if v == 128 else 255).filter(ImageFilter.GaussianBlur(0.8))
+    im.putalpha(ImageChops.multiply(im.getchannel("A"), mask))
+    return im
+
+
 def save(im, key):
     os.makedirs(IMG_DIR, exist_ok=True)
-    im = im.convert("RGBA")
-    im.thumbnail((640, 640), Image.LANCZOS)
+    im = remove_bg(im.convert("RGBA"))
+    im.thumbnail((900, 900), Image.LANCZOS)
     fn = hashlib.sha1(key.encode()).hexdigest()[:14] + ".webp"
     im.save(os.path.join(IMG_DIR, fn), "WEBP", quality=82, method=5)
     return fn
