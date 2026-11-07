@@ -281,6 +281,19 @@ def url_score(c, model, en, ru):
     return s
 
 
+GENERIC = {"apple", "samsung", "xiaomi", "galaxy", "huawei", "sony", "for", "with", "and", "the", "playstation", "nintendo",
+           "switch", "ps5", "ps4", "magsafe", "case", "pro", "max", "plus", "mini", "ultra", "air"}
+
+
+def coverage(c, model):
+    """Доля значимых слов модели (Gothic, Remake, F8, s26…), найденных в адресе или подписи картинки."""
+    toks = [t for t in re.findall(r"[a-z0-9]+", model.lower()) if t not in GENERIC and len(t) > 1]
+    if not toks:
+        return 1.0
+    text = norm(c["url"] + " " + c["alt"])
+    return sum(1 for t in toks if t in text) / len(toks)
+
+
 def fetch_img(url):
     r = S.get(url, timeout=25, headers={"Referer": "https://yandex.ru/"})
     r.raise_for_status()
@@ -339,7 +352,7 @@ def save(im, key):
     return fn
 
 
-STRICT_COLOR = {"Смартфоны", "Планшеты", "Часы и браслеты"}
+STRICT_COLOR = {"Смартфоны", "Планшеты", "Часы и браслеты", "Ноутбуки и компьютеры"}
 
 
 def find(name, brand_name, sec=""):
@@ -363,6 +376,8 @@ def find(name, brand_name, sec=""):
             for c in cands[:5]:
                 sc = url_score(c, qmodel, en, ru)
                 if sc < 1:
+                    continue
+                if coverage(c, model) < 0.5:  # в подписи/адресе должна быть хотя бы половина названия модели
                     continue
                 if strict:  # цвет должен подтверждаться адресом или подписью картинки
                     text = norm(c["url"] + " " + c["alt"])
