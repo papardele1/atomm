@@ -169,15 +169,16 @@ def model_of(name):
 def color_of(name):
     """(английское название цвета или None, русское или None)."""
     en = ru = None
-    m = re.search(r"цвет:?\s+([^,(]+)(?:\(([^)]+)\))?", name, re.I)
+    m = re.search(r"(?:цвет|корпус):?\s+([^,(]+)(?:\(([^)]+)\))?", name, re.I)
     if m:
         ru = m.group(1).strip()
         if m.group(2) and not CYR.search(m.group(2)):
             en = m.group(2).strip()
     if not en:
-        for c in _EN_COLOR.findall(name):
+        for c in _EN_COLOR.findall(name):  # первый подходящий: у часов это цвет корпуса, а не ремешка
             if not re.search(r"\d{2,}|gb|tb|ssd|wi-?fi|lte|gps|cellular|esim|sim|m\d|intel|amd|ryzen|core|rtx", c, re.I):
                 en = c.strip()
+                break
     if en and re.fullmatch(r"[A-Z0-9]{4,8}(/[A-Z])?", en) and re.search(r"\d", en):  # код модели (MW1G3), не цвет
         en = None
     if not ru:
