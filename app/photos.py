@@ -116,9 +116,27 @@ def norm(s):
     return re.sub(r"[^a-z0-9а-яё]", "", s.lower())
 
 
+def accessory_maker(name):
+    """Для аксессуара «X для <устройство>» бренд — производитель аксессуара (X), а не устройства.
+    Возвращает None, если это не аксессуар; '' — если производитель не указан."""
+    m = re.match(r"(.*?)\s+для\s+", name, re.I)
+    if not m:
+        return None
+    toks = re.findall(r"[A-Za-z][A-Za-z0-9\-]+", m.group(1))
+    return toks[0] if toks else ""
+
+
 def brand_of(name, brand):
     """Бренд самого товара: из каталога, иначе первое латинское слово модели («Remax iPhone 16» → Remax,
     а не Apple — иначе для чехла стороннего бренда нашлась бы картинка Apple)."""
+    acc = None if re.match(r"(игра|диск)\b", name, re.I) else accessory_maker(name)
+    if acc is not None:
+        if not acc:
+            return ""
+        t = acc.lower()
+        if t in ALIASES:
+            return ALIASES[t]
+        return next((k for k in SITES if k.lower() == t), acc)
     if brand and brand in SITES:
         return brand
     if re.match(r"(игра|диск)\b", name, re.I):  # игры — по платформе
@@ -204,8 +222,17 @@ def yandex(query):
 
 def official(c, brand):
     hosts = SITES.get(brand, ([], []))[1] or [brand.lower()]
-    h = urlparse(c["url"]).netloc.lower() + " " + c["dom"].lower()
-    return any(x in h for x in hosts)
+
+    def ok(host):
+        host = host.lower().split(":")[0]
+        for x in hosts:
+            if "." in x:
+                if host == x or host.endswith("." + x):
+                    return True
+            elif x in host:  # имя бренда без домена (pitaka, uniq…)
+                return True
+        return False
+    return ok(urlparse(c["url"]).netloc) or ok(c["dom"])
 
 
 def url_score(c, model, en, ru):

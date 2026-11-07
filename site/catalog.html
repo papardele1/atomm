@@ -62,6 +62,8 @@ h1{font-weight:200;font-size:clamp(34px,4vw,58px);letter-spacing:-.04em;line-hei
 .card:hover{transform:translateY(-3px);box-shadow:0 18px 40px -22px rgba(28,30,33,.45);background:#f3f4f5}
 .tile{aspect-ratio:1/1;border-radius:11px;background:radial-gradient(90% 90% at 50% 35%,#f4f5f6 0%,#dfe1e4 70%,#d3d6da 100%);display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden}
 .tile svg{width:62%;height:62%;filter:drop-shadow(0 14px 16px rgba(28,30,33,.18))}
+.tile .ph{width:78%;height:78%;object-fit:contain;mix-blend-mode:multiply;filter:drop-shadow(0 12px 14px rgba(28,30,33,.14))}
+.mimg .mph{width:72%;height:72%;max-height:420px;object-fit:contain;mix-blend-mode:multiply;filter:drop-shadow(0 24px 26px rgba(28,30,33,.18))}
 .badges{position:absolute;left:8px;top:8px;display:flex;gap:4px;flex-wrap:wrap}
 .bdg{font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;padding:4px 7px;border-radius:5px;background:rgba(245,246,247,.85);color:var(--ink)}
 .bdg.dark{background:var(--ink);color:#eef0f2}
@@ -197,7 +199,8 @@ form.co input:focus,form.co textarea:focus{border-color:rgba(28,30,33,.4)}
 const $=s=>document.querySelector(s);
 const fmt=n=>n.toLocaleString('ru-RU').replace(/,/g,' ')+' ₽';
 const esc=s=>s.replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-let D=null,ITEMS=[],IDS=[],IDX={};
+let D=null,ITEMS=[],IDS=[],IDX={},PH={};
+function pic(i,cls){const f=PH[IDS[i]];return f?`<img class="${cls}" src="img/${f}" alt="${esc(ITEMS[i][3])}" loading="lazy" decoding="async" onerror="this.outerHTML=''">`:'';}
 const S={sec:-1,brands:new Set(),f:{},sub:-1,q:'',pmin:0,pmax:0,stock:true,onlyNew:false,sort:'pop',shown:48};
 
 /* ---------- colours from product names ---------- */
@@ -421,13 +424,13 @@ function render(){
 function plural(n,f){const a=n%100,b=n%10;if(a>10&&a<20)return f[2];if(b===1)return f[0];if(b>=2&&b<=4)return f[1];return f[2];}
 function cardHTML(i){const it=ITEMS[i];
   const b=[];if(it[6]===1)b.push('<span class="bdg dark">Как новый</span>');if(it[6]===2)b.push('<span class="bdg">Уценка</span>');if(!it[5])b.push('<span class="bdg red">Нет в наличии</span>');
-  return `<div class="card" data-i="${i}"><div class="tile">${icon(it[0],it[3])}<div class="badges">${b.join('')}</div></div>
+  return `<div class="card" data-i="${i}"><div class="tile">${pic(i,'ph')||icon(it[0],it[3])}<div class="badges">${b.join('')}</div></div>
   <div class="cbrand mono">${it[1]>=0?D.brands[it[1]]:esc(D.subs[it[2]])}</div><div class="cname">${esc(it[3])}</div>
   <div class="crow"><div class="cprice">${it[4]?fmt(it[4]):'Цена по запросу'}</div><button class="add" data-add="${i}" ${(!it[5]||!it[4])?'disabled':''} aria-label="В корзину">+</button></div></div>`;}
 
 /* ---------- product modal ---------- */
 function openItem(i){const it=ITEMS[i];
-  $('#modal').innerHTML=`<button class="x" data-close>×</button><div class="mimg">${icon(it[0],it[3])}</div>
+  $('#modal').innerHTML=`<button class="x" data-close>×</button><div class="mimg">${pic(i,'mph')||icon(it[0],it[3])}</div>
   <div class="mbody"><div class="mono" style="color:var(--mute)">${D.sections[it[0]]} · ${esc(D.subs[it[2]])}</div>
   <h2>${esc(it[3])}</h2>
   <div class="mprice">${it[4]?fmt(it[4]):'Цена по запросу'}</div>
@@ -534,6 +537,7 @@ function applyHash(){
   if(p.sec!=null)S.sec=p.sec;if(p.b&&br(p.b)>=0)S.brands.add(br(p.b));if(p.q){S.q=p.q;$('#q').value=p.q;}
 }
 
+fetch('img/index.json',{cache:'no-cache'}).then(r=>r.ok?r.json():{}).then(j=>{PH=j||{};if(D)render();}).catch(()=>{});
 fetch('catalog.json',{cache:'no-cache'}).then(r=>r.json()).then(d=>{D=d;IDS=d.items.map(r=>r[0]);ITEMS=d.items.map(r=>r.slice(1));IDS.forEach((id,i)=>IDX[id]=i);ATTR=ITEMS.map(it=>attrsOf(d.sections[it[0]],it[3]));NAMES=ITEMS.map(it=>norm(it[3]+' '+(it[1]>=0?d.brands[it[1]]:'')+' '+d.subs[it[2]]));
   applyHash();updCartBtn();render();}).catch(()=>{$('#grid').innerHTML='<div class="empty">Не удалось загрузить каталог.</div>';});
 })();
