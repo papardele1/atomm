@@ -129,6 +129,8 @@ def accessory_maker(name):
 def brand_of(name, brand):
     """Бренд самого товара: из каталога, иначе первое латинское слово модели («Remax iPhone 16» → Remax,
     а не Apple — иначе для чехла стороннего бренда нашлась бы картинка Apple)."""
+    if re.search(r"dualsense|dualshock|playstation portal|ps vr", name, re.I):
+        return "PlayStation"
     acc = None if re.match(r"(игра|диск)\b", name, re.I) else accessory_maker(name)
     if acc is not None:
         if not acc:
@@ -235,14 +237,39 @@ def official(c, brand):
     return ok(urlparse(c["url"]).netloc) or ok(c["dom"])
 
 
+COLORS = ["black", "white", "silver", "gray", "grey", "gold", "blue", "green", "red", "pink", "purple", "violet", "yellow",
+          "orange", "brown", "beige", "navy", "lavender", "titanium", "graphite", "midnight", "starlight", "teal", "mint",
+          "черн", "бел", "серебр", "сер", "золот", "син", "голуб", "зелен", "красн", "розов", "фиолет", "желт",
+          "оранж", "коричн", "бежев", "лаванд", "титан", "графит", "бирюз", "мят"]
+
+
+def color_tokens(en, ru):
+    t = set()
+    for col in (en, ru):
+        if col:
+            for w in re.findall(r"[a-zа-яё]+", col.lower()):
+                for c in COLORS:
+                    if w.startswith(c):
+                        t.add(c)
+    return t
+
+
 def url_score(c, model, en, ru):
     text = norm(c["url"] + " " + c["alt"])
     s = 0
     toks = [t for t in re.findall(r"[a-z0-9]+", model.lower()) if t not in ("apple", "samsung", "xiaomi", "galaxy", "huawei", "sony")]
     s += sum(2 for t in toks if t in text)
-    for col in (en, ru):
-        if col and norm(col) and norm(col) in text:
-            s += 4
+    exact = any(col and norm(col) and norm(col) in text for col in (en, ru))
+    want = color_tokens(en, ru)
+    seen = {c for c in COLORS if c in text}
+    if exact:
+        s += 5
+    elif want and (want & seen):
+        s += 3
+    elif want and seen:
+        s -= 7  # на картинке, судя по подписи, другой цвет
+    elif want:
+        s -= 2
     if BAD.search(c["url"]):
         s -= 6
     if GOOD.search(c["url"]):
@@ -262,17 +289,43 @@ def fetch_img(url):
     return im
 
 
+def trim(im):
+    """Обрезает поля (прозрачные или цвета фона по углам), оставляя 4% отступа."""
+    im = im.convert("RGBA")
+    a = im.getchannel("A")
+    box = a.point(lambda v: 255 if v > 20 else 0).getbbox()
+    if box:
+        im = im.crop(box)
+    w, h = im.size
+    rgb = im.convert("RGB")
+    corners = [rgb.getpixel(p) for p in ((0, 0), (w - 1, 0), (0, h - 1), (w - 1, h - 1))]
+    bg = tuple(sorted(c[i] for c in corners)[1] for i in range(3))
+    from PIL import ImageChops
+    diff = ImageChops.difference(rgb, Image.new("RGB", rgb.size, bg)).convert("L").point(lambda v: 255 if v > 24 else 0)
+    alpha = im.getchannel("A").point(lambda v: 255 if v > 20 else 0)
+    mask = ImageChops.multiply(diff, alpha)
+    box = mask.getbbox()
+    if box:
+        pad = int(max(box[2] - box[0], box[3] - box[1]) * 0.04)
+        box = (max(0, box[0] - pad), max(0, box[1] - pad), min(w, box[2] + pad), min(h, box[3] + pad))
+        frac = (box[2] - box[0]) * (box[3] - box[1]) / max(w * h, 1)
+        im = im.crop(box)
+    else:
+        frac = 0
+    return im, frac
+
+
 def packshot_score(im):
-    """Доля «чистого» края кадра: белый/светлый или прозрачный фон — признак предметной съёмки."""
+    """Доля «чистого» края кадра: белый/светло-серый или прозрачный фон — признак предметной съёмки."""
     im = im.convert("RGBA")
     w, h = im.size
     px = im.load()
-    pts = [(x, y) for x in range(0, w, max(1, w // 40)) for y in (0, 1, h - 2, h - 1)] + \
-          [(x, y) for y in range(0, h, max(1, h // 40)) for x in (0, 1, w - 2, w - 1)]
+    pts = [(x, y) for x in range(0, w, max(1, w // 40)) for y in (0, h - 1)] + \
+          [(x, y) for y in range(0, h, max(1, h // 40)) for x in (0, w - 1)]
     clean = 0
     for x, y in pts:
         r, g, b, a = px[min(x, w - 1), min(y, h - 1)]
-        if a < 30 or (r > 225 and g > 225 and b > 225 and max(r, g, b) - min(r, g, b) < 18):
+        if a < 30 or (r > 215 and g > 215 and b > 215 and max(r, g, b) - min(r, g, b) < 18):
             clean += 1
     return clean / max(len(pts), 1)
 
@@ -280,9 +333,6 @@ def packshot_score(im):
 def save(im, key):
     os.makedirs(IMG_DIR, exist_ok=True)
     im = im.convert("RGBA")
-    bbox = im.getchannel("A").getbbox()
-    if bbox and bbox != (0, 0) + im.size:
-        im = im.crop(bbox)
     im.thumbnail((640, 640), Image.LANCZOS)
     fn = hashlib.sha1(key.encode()).hexdigest()[:14] + ".webp"
     im.save(os.path.join(IMG_DIR, fn), "WEBP", quality=82, method=5)
@@ -313,7 +363,11 @@ def find(name, brand_name):
                     continue
                 if min(im.size) < 200:
                     continue
-                ps = packshot_score(im)
+                ps_raw = packshot_score(im)  # фон по краям исходного кадра
+                im, frac = trim(im)
+                if min(im.size) < 160 or frac < 0.05:  # товар — крошечная часть баннера
+                    continue
+                ps = ps_raw
                 total = sc + 8 * ps
                 if q == model and col:  # без цвета — только если картинка явно предметная
                     total -= 3
