@@ -1,7 +1,7 @@
 /* Яндекс Метрика для ATOMM: счётчик, цели и электронная коммерция.
    Номер счётчика вписывается в METRIKA_ID; пока он 0, скрипт ничего не отправляет. */
 (function () {
-  var METRIKA_ID = 0;
+  var METRIKA_ID = 114131793;
 
   window.dataLayer = window.dataLayer || [];
 
