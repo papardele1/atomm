@@ -142,6 +142,8 @@ def _special_model(n, core):
     """(семейство, год/поколение, линейка) для iPad, Apple Watch, AirPods, Galaxy Watch/Tab — или None."""
     year = re.search(r"\((20\d\d)\)", n)
     year = int(year.group(1)) if year else None
+    if re.match(r"(телефон|смартфон)\s+apple iphone duo\b", n.lower()):
+        return "телефон apple iphone", 18, 6.0  # складной флагман поколения 2026 — выше 18 Pro Max
     if "ipad" in core:
         chip = re.search(r"\bm(\d)\b", core)
         if re.search(r"\bpro\b", core):
@@ -261,6 +263,12 @@ def resolve_subs(rows, sec_of, name_of, sub_of, set_sub):
             specific.setdefault(sec_of(r), set()).add(sub)
     moved = 0
     for r in rows:
+        if sub_of(r) == "Apple iPhone":  # общий подраздел Store77 → подраздел модели (iPhone Duo и т. п.)
+            m = re.match(r"(?:телефон|смартфон)\s+(Apple iPhone (?:[A-Za-z]+|\d+\w*)(?: Pro Max| Pro| Plus)?)\b", name_of(r), re.I)
+            if m:
+                set_sub(r, m.group(1))
+                moved += 1
+            continue
         if re.search(r"[A-Za-z0-9]", sub_of(r)):
             continue
         name = name_of(r).lower()
