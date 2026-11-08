@@ -150,6 +150,7 @@ form.co input:focus,form.co textarea:focus{border-color:rgba(28,30,33,.4)}
 .fscroll{max-height:236px;overflow:auto;padding-right:4px}
 .fmore{margin-top:8px;background:none;border:0;padding:4px 0;font:inherit;font-size:13px;color:#555;text-decoration:underline;cursor:pointer}
 </style>
+<script src="analytics.js"></script>
 </head>
 <body>
 <header>
@@ -200,6 +201,8 @@ const $=s=>document.querySelector(s);
 const fmt=n=>n.toLocaleString('ru-RU').replace(/,/g,' ')+' ₽';
 const esc=s=>s.replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 let D=null,ITEMS=[],IDS=[],IDX={},PH={};
+function ecomP(i,q){const it=ITEMS[i];return {id:IDS[i],name:it[3],price:it[4],brand:it[1]>=0?D.brands[it[1]]:'',category:D.sections[it[0]]+'/'+D.subs[it[2]],quantity:q||1};}
+const G=(g,p)=>{try{window.atommGoal&&atommGoal(g,p)}catch(e){}},EC=(a,p,f)=>{try{window.atommEcom&&atommEcom(a,p,f)}catch(e){}};
 function pic(i,cls){const f=PH[IDS[i]];return f?`<img class="${cls}" src="img/${f}" alt="${esc(ITEMS[i][3])}" loading="lazy" decoding="async" onerror="this.outerHTML=''">`:'';}
 const S={sec:-1,brands:new Set(),f:{},sub:-1,q:'',pmin:0,pmax:0,stock:true,onlyNew:false,sort:'pop',shown:48};
 
@@ -254,7 +257,7 @@ let cart={};try{cart=JSON.parse(localStorage.getItem('atomm_cart2')||'{}')||{};}
 const saveCart=()=>{try{localStorage.setItem('atomm_cart2',JSON.stringify(cart));}catch(e){}};
 function cartTotals(){let n=0,s=0;for(const k in cart){const i=IDX[k];if(i===undefined)continue;n+=cart[k];s+=cart[k]*ITEMS[i][4];}return{n,s};}
 function updCartBtn(){const t=cartTotals();$('#cartCnt').textContent=t.n;$('#cartSum').textContent=fmt(t.s);}
-function addToCart(i,el){const id=IDS[i];cart[id]=(cart[id]||0)+1;saveCart();updCartBtn();toast('Добавлено в корзину');if(el){el.classList.add('done');el.textContent='✓';setTimeout(()=>{el.classList.remove('done');el.textContent='+';},1200);}}
+function addToCart(i,el){const id=IDS[i];cart[id]=(cart[id]||0)+1;G('cart_add');EC('add',[ecomP(i,1)]);saveCart();updCartBtn();toast('Добавлено в корзину');if(el){el.classList.add('done');el.textContent='✓';setTimeout(()=>{el.classList.remove('done');el.textContent='+';},1200);}}
 
 /* ---------- delivery ---------- */
 const DELIVERY=1000;
@@ -429,7 +432,7 @@ function cardHTML(i){const it=ITEMS[i];
   <div class="crow"><div class="cprice">${it[4]?fmt(it[4]):'Цена по запросу'}</div><button class="add" data-add="${i}" ${(!it[5]||!it[4])?'disabled':''} aria-label="В корзину">+</button></div></div>`;}
 
 /* ---------- product modal ---------- */
-function openItem(i){const it=ITEMS[i];
+function openItem(i){const it=ITEMS[i];EC('detail',[ecomP(i,1)]);
   $('#modal').innerHTML=`<button class="x" data-close>×</button><div class="mimg">${pic(i,'mph')||icon(it[0],it[3])}</div>
   <div class="mbody"><div class="mono" style="color:var(--mute)">${D.sections[it[0]]} · ${esc(D.subs[it[2]])}</div>
   <h2>${esc(it[3])}</h2>
@@ -479,7 +482,7 @@ async function submitOrder(f,btn){
   let r;try{r=await fetch('/api/order',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});}catch(x){openCart('demo');return;}
   let j=null;try{j=await r.json();}catch(x){}
   if(!j){openCart('demo');return;}
-  if(j.ok){LAST=j;cart={};saveCart();updCartBtn();openCart('done');return;}
+  if(j.ok){G('order',{order_price:j.total});EC('purchase',body.items.map(x=>ecomP(IDX[x.id],x.qty)),{id:String(j.order),revenue:j.total});LAST=j;cart={};saveCart();updCartBtn();openCart('done');return;}
   btn.disabled=false;btn.textContent='Подтвердить заказ';
   e.textContent=(typeof j.error==='string'?j.error:'Проверьте правильность заполнения полей.');e.classList.add('show');
 }
@@ -496,7 +499,7 @@ document.addEventListener('click',e=>{
   if(t.dataset.sub!==undefined){S.sub=+t.dataset.sub;S.shown=48;render();return;}
   if(t.dataset.inc!==undefined){cart[t.dataset.inc]++;saveCart();updCartBtn();openCart();return;}
   if(t.dataset.dec!==undefined){const k=t.dataset.dec;cart[k]--;if(cart[k]<=0)delete cart[k];saveCart();updCartBtn();openCart();return;}
-  if(t.id==='toCheckout'){openCart('checkout');return;}
+  if(t.id==='toCheckout'){G('checkout');openCart('checkout');return;}
   if(t.id==='back'){openCart();return;}
   if(t.id==='place'){const f=$('#co');const pay=f.querySelector('input[name=pay]:checked').value;
     if(pay==='card'){$('#warn').classList.add('show');return;}
