@@ -536,6 +536,7 @@ function applyHash(){
     'samsung':{b:'Samsung'},'dyson':{b:'Dyson'},'playstation':{q:'PlayStation'}};
   if(h==='cart'){setTimeout(()=>openCart(),0);return;}
   if(h.startsWith('item-')){const i=IDX[h.slice(5)];if(i!==undefined)openItem(i);return;}
+  if(h.startsWith('sub=')){const k=D.subs.indexOf(decodeURIComponent(h.slice(4)));if(k>=0){const it=ITEMS.find(x=>x[2]===k);if(it){S.sec=it[0];S.sub=k;}}return;}
   const p=P[h];if(!p)return;
   if(p.sec!=null)S.sec=p.sec;if(p.b&&br(p.b)>=0)S.brands.add(br(p.b));if(p.q){S.q=p.q;$('#q').value=p.q;}
 }
