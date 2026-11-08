@@ -1,5 +1,12 @@
 /* Мобильное меню ATOMM: кнопка ☰ в шапке и полноэкранное меню (для экранов до 900px). */
 (function () {
+
+  /* Без горизонтальной прокрутки на телефонах (iOS Safari учитывает даже спрятанные панели). */
+  (function () {
+    var g = document.createElement('style');
+    g.textContent = 'html,body{max-width:100%;overflow-x:hidden}@supports(overflow:clip){html,body{overflow-x:clip}}';
+    document.head.appendChild(g);
+  })();
   var LINKS = [['Главная', 'index.html'], ['Каталог', 'catalog.html'], ['Доставка', 'delivery.html'],
                ['Гарантия', 'warranty.html'], ['Контакты', 'contacts.html']];
   var PHONE = '+79777773727', PHONE_TXT = '+7 977 777-37-27';
@@ -70,7 +77,7 @@
     var fs = document.createElement('style');
     fs.textContent = '.sitefoot{border-top:1px solid rgba(28,30,33,.13);margin-top:40px;padding:22px 32px calc(26px + env(safe-area-inset-bottom));' +
       'font:12px/1.6 Inter,system-ui,sans-serif;color:#6b6f75;display:flex;flex-wrap:wrap;gap:6px 22px;justify-content:space-between}' +
-      '.sitefoot a{color:#33363a;text-decoration:none;margin-right:16px;white-space:nowrap}.sitefoot a:hover{text-decoration:underline}' +
+      '.sitefoot>div{min-width:0;max-width:100%}.sitefoot a{color:#33363a;text-decoration:none;margin-right:16px;display:inline-block}.sitefoot a:hover{text-decoration:underline}' +
       '@media(max-width:600px){.sitefoot{padding:20px 18px calc(24px + env(safe-area-inset-bottom))}}';
     document.head.appendChild(fs);
     var f = document.createElement('footer');

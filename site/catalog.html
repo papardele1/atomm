@@ -57,6 +57,10 @@ h1{font-weight:200;font-size:clamp(34px,4vw,58px);letter-spacing:-.04em;line-hei
 .subs{display:flex;gap:8px;overflow:auto;padding-bottom:6px;margin-bottom:18px;scrollbar-width:thin}
 .subs button{white-space:nowrap;border:1px solid var(--line);padding:7px 13px;border-radius:999px;font-size:13px;background:rgba(245,246,247,.4)}
 .subs button.on{background:var(--ink);color:#eef0f2;border-color:var(--ink)}
+.drawer{visibility:hidden;transition:transform .4s cubic-bezier(.2,.8,.2,1),visibility 0s linear .4s}.drawer.show{visibility:visible;transition:transform .4s cubic-bezier(.2,.8,.2,1)}
+@media(max-width:900px){aside{visibility:hidden;transition:transform .35s,visibility 0s linear .35s}aside.show{visibility:visible;transition:transform .35s}}
+.subs button.back{background:transparent;color:var(--ink);font-weight:600;border-style:dashed}
+@media(max-width:900px){.subs{margin:0 -16px 16px;padding:0 16px 6px;scrollbar-width:none}.subs::-webkit-scrollbar{display:none}}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(218px,1fr));gap:14px}
 .card{background:rgba(240,241,243,.72);border:1px solid rgba(255,255,255,.6);border-radius:16px;padding:12px;display:flex;flex-direction:column;gap:10px;cursor:pointer;transition:transform .25s,box-shadow .25s,background .25s;position:relative}
 .card:hover{transform:translateY(-3px);box-shadow:0 18px 40px -22px rgba(28,30,33,.45);background:#f3f4f5}
@@ -388,6 +392,25 @@ function baseFiltered(ignoreBrand,ignoreSub,ignoreFacet){
     res.push(i);}
   return res;
 }
+const MOB=window.matchMedia('(max-width:900px)');
+/* Мобильная навигация цепочкой: Разделы → Бренды → Модели. Состояние общее с панелью «Фильтры». */
+function renderNav(){
+  const el=$('#subs');let h='';
+  if(S.sec<0){
+    const c={};for(let i=0;i<ITEMS.length;i++){if(S.stock&&!ITEMS[i][5])continue;c[ITEMS[i][0]]=(c[ITEMS[i][0]]||0)+1;}
+    h=D.sections.map((n,k)=>c[k]?`<button data-nav="sec" data-v="${k}">${esc(n)}</button>`:'').join('');
+  } else if(S.brands.size!==1){
+    const c={},order=[];for(const i of baseFiltered(true,true)){const b=ITEMS[i][1];if(b<0)continue;if(!(b in c))order.push(b);c[b]=(c[b]||0)+1;}
+    h=`<button data-nav="up0" class="back">← Все разделы</button>`+order.map(b=>`<button data-nav="brand" data-v="${b}" class="${S.brands.has(b)?'on':''}">${esc(D.brands[b])}</button>`).join('');
+  } else {
+    const sc={};for(const i of baseFiltered(false,true)){const x=ITEMS[i][2];sc[x]=(sc[x]||0)+1;}
+    const sl=Object.keys(sc).map(Number).sort((a,b)=>a-b).slice(0,40);
+    const bn=D.brands[[...S.brands][0]];
+    h=`<button data-nav="up1" class="back">← ${esc(D.sections[S.sec])}</button>`+(sl.length>1?`<button data-sub="-1" class="${S.sub<0?'on':''}">Все ${esc(bn)}</button>`+sl.map(x=>`<button data-sub="${x}" class="${S.sub===x?'on':''}">${esc(D.subs[x].replace(/^Apple\s+(?=iPhone|iPad|Watch|MacBook|AirPods)/,''))}</button>`).join(''):'');
+  }
+  el.innerHTML=h;const on=el.querySelector('.on');if(on)on.scrollIntoView({inline:'center',block:'nearest'});
+}
+MOB.addEventListener&&MOB.addEventListener('change',()=>{if(D)render();});
 function render(){
   const list=baseFiltered(false,false);
   if(S.sort==='asc')list.sort((a,b)=>ITEMS[a][4]-ITEMS[b][4]);
@@ -412,7 +435,8 @@ function render(){
     fh+=`<div class="fgroup"><div class="ftitle mono">${title}</div><div class="brandlist${many&&!cut?' fscroll':''}">`+shown.map(v=>`<label class="chk"><input type="checkbox" data-facet="${k}" data-val="${esc(String(v))}" ${sel.has(v)?'checked':''}> ${esc(facetLbl(k,v))} <span class="c">${cnt[v]}</span></label>`).join('')+`</div>${cut?`<button class="fmore" data-fmore="${k}">Показать все (${vals.length})</button>`:''}</div>`;}
   $('#facets').innerHTML=fh;
   // subs chips (only when a section is chosen)
-  if(S.sec>=0){const sc={};for(const i of baseFiltered(false,true)){const s=ITEMS[i][2];sc[s]=(sc[s]||0)+1;}
+  if(MOB.matches){renderNav();}
+  else if(S.sec>=0){const sc={};for(const i of baseFiltered(false,true)){const s=ITEMS[i][2];sc[s]=(sc[s]||0)+1;}
     const sl=Object.keys(sc).map(Number).sort((a,b)=>a-b).slice(0,40); // подразделы уже по старшинству
     $('#subs').innerHTML=sl.length>1?`<button data-sub="-1" class="${S.sub<0?'on':''}">Все</button>`+sl.map(s=>`<button data-sub="${s}" class="${S.sub===s?'on':''}">${esc(D.subs[s])}</button>`).join(''):'';
   } else $('#subs').innerHTML='';
@@ -496,6 +520,10 @@ document.addEventListener('click',e=>{
   if(t.dataset.close!==undefined){closeAll();return;}
   if(t.dataset.fmore!==undefined){FOPEN.add(t.dataset.fmore);render();return;}
   if(t.dataset.sec!==undefined){FOPEN.clear();S.sec=+t.dataset.sec;S.sub=-1;S.brands.clear();S.f={};S.shown=48;render();scrollTo({top:0,behavior:'smooth'});return;}
+  if(t.dataset.nav){const n=t.dataset.nav,v=+t.dataset.v;S.shown=48;S.sub=-1;
+    if(n==='sec'){S.sec=v;S.brands.clear();S.f={};}else if(n==='brand'){S.brands=new Set([v]);}
+    else if(n==='up0'){S.sec=-1;S.brands.clear();S.f={};}else if(n==='up1'){S.brands.clear();}
+    render();scrollTo({top:0,behavior:'smooth'});return;}
   if(t.dataset.sub!==undefined){S.sub=+t.dataset.sub;S.shown=48;render();return;}
   if(t.dataset.inc!==undefined){cart[t.dataset.inc]++;saveCart();updCartBtn();openCart();return;}
   if(t.dataset.dec!==undefined){const k=t.dataset.dec;cart[k]--;if(cart[k]<=0)delete cart[k];saveCart();updCartBtn();openCart();return;}
