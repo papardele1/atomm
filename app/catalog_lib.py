@@ -93,6 +93,16 @@ def product_id(url_path):
     return hashlib.sha1(slug.encode()).hexdigest()[:10]
 
 
+SIM_TAG = "Nano SIM + eSim (физическая и электронная SIM-карта)"
+
+
+def sim_named(name, sub):
+    """У iPhone без пометки о SIM (кроме Air) — физическая nano-SIM + eSIM: дописываем это в название."""
+    if not sub.startswith("Apple iPhone") or "Air" in sub or re.search(r"sim|сим", name, re.I):
+        return name
+    return name.replace(", цвет:", f", {SIM_TAG}, цвет:", 1) if ", цвет:" in name else f"{name}, {SIM_TAG}"
+
+
 def build(products):
     """products: list of dict(url, name, price, in_stock, sub_name, top)."""
     goods = []
@@ -104,6 +114,8 @@ def build(products):
                           price=our_price(p.get("price")), stock=1 if p.get("in_stock") else 0,
                           cond=cond_of(p["name"])))
     resolve_subs(goods, lambda g: g["section"], lambda g: g["name"], lambda g: g["sub"], lambda g, v: g.__setitem__("sub", v))
+    for g in goods:
+        g["name"] = sim_named(g["name"], g["sub"])
     seniority_sort(goods, lambda g: (SECTIONS.index(g["section"]), g["brand"], g["name"], g["price"]))
     brands = sorted({g["brand"] for g in goods if g["brand"]})
     subs = order_subs(g["sub"] for g in goods)  # в порядке старшинства товаров
