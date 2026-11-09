@@ -29,6 +29,7 @@ SITE = os.environ.get("ATOMM_SITE", "")  # папка со статикой са
 DELIVERY_PRICE = int(os.environ.get("ATOMM_DELIVERY_PRICE", "1000"))
 DELIVERY_CUTOFF_HOUR = 15          # заказ до 15:00 по Москве — доставка в тот же день
 DELIVERY_WINDOW = "с 17:00 до 22:00"
+PICKUP_ADDR = "Москва, Багратионовский проезд, 7к2"
 MSK = __import__("datetime").timezone(__import__("datetime").timedelta(hours=3))
 
 
@@ -115,6 +116,7 @@ class Order(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     phone: str = Field(min_length=5, max_length=30)
     addr: str = Field(default="", max_length=400)
+    method: str = "courier"
     pay: str
     consent: bool
     items: list[Line] = Field(min_length=1, max_length=50)
@@ -282,8 +284,11 @@ def order(o: Order, request: Request):
     digits = re.sub(r"\D", "", o.phone)
     if len(digits) < 10:
         return err("Проверьте номер телефона.")
-    if len(o.addr.strip()) < 5:
+    pickup = o.method == "pickup"
+    if not pickup and len(o.addr.strip()) < 5:
         return err("Укажите адрес доставки.")
+    addr = f"САМОВЫВОЗ ({PICKUP_ADDR})" if pickup else o.addr.strip()
+    dprice = 0 if pickup else DELIVERY_PRICE
     cat = catalog()
     lines, total = [], 0
     for ln in o.items:
@@ -295,21 +300,22 @@ def order(o: Order, request: Request):
         lines.append({"id": ln.id, "name": it["name"], "qty": ln.qty, "price": it["price"]})
         total += it["price"] * ln.qty
     goods = total
-    total += DELIVERY_PRICE
-    when = f"{delivery_day()}, {DELIVERY_WINDOW}"
+    total += dprice
+    when = "самовывоз, время согласуем по телефону" if pickup else f"{delivery_day()}, {DELIVERY_WINDOW}"
     with _lock:
         con = db()
         cur = con.execute("insert into orders(created,name,phone,addr,pay,total,items,ip) values(?,?,?,?,?,?,?,?)",
-                          (time.strftime("%Y-%m-%d %H:%M:%S"), o.name.strip(), o.phone.strip(), o.addr.strip(),
+                          (time.strftime("%Y-%m-%d %H:%M:%S"), o.name.strip(), o.phone.strip(), addr,
                            o.pay, total, json.dumps(lines, ensure_ascii=False), ip))
         con.commit()
         no = cur.lastrowid
         con.close()
     body = "\n".join(f"• {l['name']} × {l['qty']} — {rub(l['price'] * l['qty'])}" for l in lines)
-    notify(f"🛒 Новый заказ №{no}\n\n{body}\n\nТовары: {rub(goods)}\nДоставка: {rub(DELIVERY_PRICE)}\n"
-           f"Итого: {rub(total)}\nОплата: наличными при получении\n\nДоставить: {when}\n"
-           f"Имя: {o.name}\nТелефон: {o.phone}\nАдрес: {o.addr}")
-    return {"ok": True, "order": no, "total": total, "delivery": DELIVERY_PRICE, "when": when}
+    dl = "🏬 САМОВЫВОЗ (бесплатно)\nСогласовать время с покупателем" if pickup else f"Доставка: {rub(dprice)}\nДоставить: {when}"
+    notify(f"🛒 Новый заказ №{no}\n\n{body}\n\nТовары: {rub(goods)}\n{dl}\n"
+           f"Итого: {rub(total)}\nОплата: наличными при получении\n\n"
+           f"Имя: {o.name}\nТелефон: {o.phone}\nАдрес: {addr}")
+    return {"ok": True, "order": no, "total": total, "delivery": dprice, "when": when, "pickup": pickup}
 
 
 # --- статика сайта (Docker-режим): должна подключаться последней ---
