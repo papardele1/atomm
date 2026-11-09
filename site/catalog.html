@@ -478,7 +478,7 @@ function openCart(step){
   const keys=Object.keys(cart).filter(k=>IDX[k]!==undefined);
   const t=cartTotals();
   if(step==='done'||step==='demo'){ $('#dTitle').textContent='Заказ';
-    $('#dBody').innerHTML=step==='done'?`<div class="done"><div class="ok">✓</div><h3 style="font-weight:300;font-size:22px">Заказ №${LAST.order} принят</h3><p class="note" style="max-width:300px">Сумма ${fmt(LAST.total)} с доставкой, оплата наличными курьеру. Доставим ${LAST.when}. Мы позвоним, чтобы подтвердить заказ.</p></div>`:`<div class="done"><div class="ok">✓</div><h3 style="font-weight:300;font-size:22px">Демо-оформление</h3><p class="note" style="max-width:300px">Это предварительная версия сайта без сервера: заказ не отправлен. Ваша корзина сохранена.</p></div>`;
+    $('#dBody').innerHTML=step==='done'?`<div class="done"><div class="ok">✓</div><h3 style="font-weight:300;font-size:22px">Заказ №${LAST.order} принят</h3><p class="note" style="max-width:300px">Сумма ${fmt(LAST.total)} с доставкой, оплата наличными курьеру. Доставим ${LAST.when}. Мы позвоним, чтобы подтвердить заказ.</p></div>`:`<div class="done"><div class="ok">!</div><h3 style="font-weight:300;font-size:22px">Заказ не отправился</h3><p class="note" style="max-width:320px">Похоже, проблема со связью. Корзина сохранена — попробуйте ещё раз или оформим заказ по телефону <a href="tel:+79777773727">+7 977 777-37-27</a> или в Telegram <a href="https://t.me/mskdiler" target="_blank">@mskdiler</a>.</p></div>`;
     $('#dFoot').innerHTML=`<button class="btn ghost" data-close>Вернуться в каталог</button>`;
   } else if(step==='checkout'){ $('#dTitle').textContent='Оформление';
     $('#dBody').innerHTML=`<form class="co" id="co"><input required name="name" placeholder="Имя"><input required name="phone" type="tel" placeholder="Телефон"><textarea name="addr" rows="2" required placeholder="Адрес доставки"></textarea>
@@ -503,9 +503,9 @@ async function submitOrder(f,btn){
   const E=f.elements;const body={name:E['name'].value,phone:E['phone'].value,addr:E['addr'].value,pay:'cash',consent:E['consent'].checked,
     items:Object.keys(cart).filter(k=>IDX[k]!==undefined).map(k=>({id:k,qty:cart[k]}))};
   btn.disabled=true;btn.textContent='Отправляем…';const e=$('#err');e.classList.remove('show');
-  let r;try{r=await fetch('/api/order',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});}catch(x){openCart('demo');return;}
+  let r;try{r=await fetch('/api/order',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});}catch(x){G('order_error',{reason:'network'});openCart('demo');return;}
   let j=null;try{j=await r.json();}catch(x){}
-  if(!j){openCart('demo');return;}
+  if(!j){G('order_error',{reason:'http_'+r.status});openCart('demo');return;}
   if(j.ok){G('order',{order_price:j.total});EC('purchase',body.items.map(x=>ecomP(IDX[x.id],x.qty)),{id:String(j.order),revenue:j.total});LAST=j;cart={};saveCart();updCartBtn();openCart('done');return;}
   btn.disabled=false;btn.textContent='Подтвердить заказ';
   e.textContent=(typeof j.error==='string'?j.error:'Проверьте правильность заполнения полей.');e.classList.add('show');
