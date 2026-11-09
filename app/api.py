@@ -377,9 +377,13 @@ if SITE:
             return FileResponse(os.path.join(SITE, "sitemap.xml"), media_type="application/xml")
         return Response(_seo.sitemap(m), media_type="application/xml; charset=utf-8", headers=_HTML_HDR)
 
+    def _redir(path, request):
+        q = request.url.query
+        return RedirectResponse(path + ("?" + q if q else ""), status_code=301)
+
     @app.get("/catalog")
-    def catalog_noslash():
-        return RedirectResponse("/catalog/", status_code=301)
+    def catalog_noslash(request: Request):
+        return _redir("/catalog/", request)
 
     @app.get("/catalog/")
     def catalog_hub():
@@ -387,8 +391,8 @@ if SITE:
         return HTMLResponse(_seo.page_hub(m), headers=_HTML_HDR) if m else _404()
 
     @app.get("/catalog/{slug}")
-    def catalog_slug_noslash(slug: str):
-        return RedirectResponse(f"/catalog/{slug}/", status_code=301)
+    def catalog_slug_noslash(slug: str, request: Request):
+        return _redir(f"/catalog/{slug}/", request)
 
     @app.get("/catalog/{slug}/")
     def catalog_page(slug: str):
@@ -397,8 +401,8 @@ if SITE:
         return HTMLResponse(h, headers=_HTML_HDR) if h else _404()
 
     @app.get("/catalog/{slug}/{sub}")
-    def catalog_sub_noslash(slug: str, sub: str):
-        return RedirectResponse(f"/catalog/{slug}/{sub}/", status_code=301)
+    def catalog_sub_noslash(slug: str, sub: str, request: Request):
+        return _redir(f"/catalog/{slug}/{sub}/", request)
 
     @app.get("/catalog/{slug}/{sub}/")
     def catalog_subpage(slug: str, sub: str):
@@ -416,8 +420,8 @@ if SITE:
         return HTMLResponse(h, headers={"Cache-Control": "no-cache"})
 
     @app.get("/index.html")
-    def index_html():
-        return RedirectResponse("/", status_code=301)
+    def index_html(request: Request):
+        return _redir("/", request)
 
     app.mount("/img", _ImgFiles(directory=IMG_DIR), name="img")
     app.mount("/", StaticFiles(directory=SITE, html=True), name="site")

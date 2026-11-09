@@ -44,7 +44,8 @@
   btn.innerHTML = '<span></span><span></span><span></span>';
   header.appendChild(btn);
 
-  var here = (location.pathname.split('/').pop() || 'index.html');
+  var path = location.pathname;
+  var here = (path.split('/').pop() || 'index.html');
   var ICONS = {
     call: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.25 11.4 11.4 0 0 0 3.6.57 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.45.57 3.57a1 1 0 0 1-.25 1z"/></svg>',
     tg: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M21.9 4.3 18.8 19c-.2 1-.9 1.3-1.7.8l-4.7-3.5-2.3 2.2c-.3.3-.5.5-1 .5l.3-4.8 8.8-7.9c.4-.3-.1-.5-.6-.2L6.7 13l-4.6-1.4c-1-.3-1-1 .2-1.5l18-6.9c.8-.3 1.6.2 1.6 1.1z"/></svg>',
@@ -55,7 +56,7 @@
   menu.innerHTML =
     '<div class="mtop"><a class="mlogo" href="/">ATOMM<i>/store</i></a><button class="mclose" type="button" aria-label="Закрыть">×</button></div>' +
     '<nav class="mlinks">' + LINKS.map(function (l) {
-      return '<a href="' + l[1] + '"' + (l[1] === here ? ' class="on"' : '') + '>' + l[0] + '</a>';
+      return '<a href="' + l[1] + '"' + (l[1] === path ? ' class="on"' : '') + '>' + l[0] + '</a>';
     }).join('') + '</nav>' +
     '<div style="margin-top:14px;font-size:13px"><a href="/offer.html" style="color:#55595f;margin-right:18px">Оферта</a><a href="/privacy.html" style="color:#55595f">Политика конфиденциальности</a></div>' +
     '<a class="mphone" href="tel:' + PHONE + '">' + PHONE_TXT + '</a>' +

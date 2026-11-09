@@ -79,12 +79,24 @@ def ru_name(sub):
     r = s
     for a, b in _RU:
         r = re.sub(a, b, r)
-    return r if r != s else ""
+    return r if r != s and not re.search(r"[A-Za-z]", r) else ""
 
 
 def plain(sub):
     """Название модели без бренда Apple для заголовков: 'Apple iPhone 17' -> 'iPhone 17'."""
-    return re.sub(r"^Apple\s+(?=iPhone|iPad|Watch|MacBook|Macbook|AirPods|Mac|iMac|HomePod)", "", sub)
+    return re.sub(r"^Apple\s+(?=iPhone|iPad|MacBook|Macbook|AirPods|Mac|iMac|HomePod)", "", sub)
+
+
+def is_generic(sub):
+    """Не модель, а группа товаров («Портативная акустика», «Телефоны Samsung», «Для планшетов»)."""
+    return bool(re.match(r"[А-ЯЁа-яё]", sub))
+
+
+def display(sub, sec):
+    """Название подраздела для H1/заголовков."""
+    if sub.startswith("Для "):
+        return f"{sec} {sub[:1].lower()}{sub[1:]}"
+    return plain(sub)
 
 
 def lower_first(s):
@@ -182,7 +194,15 @@ def model(catalog_path, img_dir):
         its = [it for it in items if (sec_name is None or it["sec"] == sec_name) and f(it["sub"], it["brand"])]
         if its:
             pages[sl] = {"kind": "collection", "slug": sl, "title": h1, "ru": ru, "sec": sec_name, "items": its}
+    coll_sets = {sl: {it["id"] for it in p["items"]} for sl, p in pages.items() if p["kind"] == "collection"}
+    for s in list(sub_slug):
+        ids = {it["id"] for it in sub_items[s]}
+        same = next((sl for sl, cs in coll_sets.items() if cs == ids), None)
+        if same:                      # модель = подборка (PlayStation) — одна страница вместо двух
+            sub_slug[s] = same
     for s, sl in sub_slug.items():
+        if sl in pages:
+            continue
         its = sub_items[s]
         p = {"kind": "model", "slug": sl, "title": s, "sec": sub_sec[s], "sub": s, "items": its, "mems": {}}
         # страницы «модель + память» — только для линеек, которые так ищут (iphone 18 pro max 256)
@@ -320,6 +340,7 @@ def footer(m):
 
 
 def layout(title, desc, canonical, body, m, ld_blocks="", robots=None, og_image=None):
+    canon = f'<link rel="canonical" href="{BASE}{e(canonical)}">' if canonical else ""
     og = f'<meta property="og:image" content="{e(og_image)}">' if og_image else ""
     rb = f'<meta name="robots" content="{robots}">' if robots else ""
     return f"""<!DOCTYPE html>
@@ -327,9 +348,9 @@ def layout(title, desc, canonical, body, m, ld_blocks="", robots=None, og_image=
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{e(title)}</title>
 <meta name="description" content="{e(desc)}">
-<link rel="canonical" href="{BASE}{e(canonical)}">{rb}
+{canon}{rb}
 <meta property="og:title" content="{e(title)}"><meta property="og:description" content="{e(desc)}">
-<meta property="og:url" content="{BASE}{e(canonical)}"><meta property="og:type" content="website"><meta property="og:site_name" content="ATOMM">{og}
+<meta property="og:url" content="{BASE}{e(canonical or '/')}"><meta property="og:type" content="website"><meta property="og:site_name" content="ATOMM">{og}
 <link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="icon" href="/favicon-32.png" sizes="32x32" type="image/png">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png"><meta name="theme-color" content="#d7d9dc">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -388,12 +409,13 @@ def agg_offer_ld(name, url, its, img=None, brand=None):
 
 
 def common_faq(name, its, wm):
+    by = "объёма памяти и цвета" if any(it["mem"] for it in its) else "модели и комплектации"
     lo, hi = price_range(its)
     n = len(in_stock(its))
     qa = []
     if lo:
         qa.append((f"Какая цена на {name} в Москве?",
-                   f"В ATOMM цены на {name} — от {rub(lo)} до {rub(hi)} в зависимости от объёма памяти и цвета. "
+                   f"В ATOMM цены на {name} — от {rub(lo)} до {rub(hi)} в зависимости от {by}. "
                    f"Сейчас в наличии {n} {plural(n, ['вариант', 'варианта', 'вариантов'])}, цены обновляются несколько раз в день."))
     qa += [
         ("Это оригинальная новая техника?",
@@ -443,7 +465,7 @@ def models_list(m, subs):
         lo, _ = price_range(its)
         n = len(in_stock(its))
         info = f"от {rub(lo)}" if lo else "нет в наличии"
-        rows.append(f'<a href="{sub_url(m, s)}"><span>{e(plain(s))}</span><small>{info}</small></a>')
+        rows.append(f'<a href="{sub_url(m, s)}"><span>{e(display(s, m["sub_sec"][s]))}</span><small>{info}</small></a>')
     return '<div class="models">' + "".join(rows) + "</div>"
 
 
@@ -483,7 +505,7 @@ def page_group(m, p):
             + ". Новая оригинальная техника, доставка по Москве сегодня при заказе до 15:00, оплата при получении.")
     url = f"/catalog/{p['slug']}/"
     return layout(title, desc, url, "\n".join(body), m,
-                  crumbs_ld + fld + agg_offer_ld(name, url, its))
+                  crumbs_ld + fld)
 
 
 def page_model(m, p, mem=None):
@@ -491,7 +513,8 @@ def page_model(m, p, mem=None):
     its = p["items"]
     if mem:
         its = [it for it in its if it["mem"] == mem]
-    nm = plain(sub)
+    nm = display(sub, p["sec"])
+    gen = is_generic(sub)
     ru = ru_name(sub)
     full = nm + (f" {mem_label(mem)}" if mem else "")
     url = f"/catalog/{p['slug']}/" + (f"{mem_slug(mem)}/" if mem else "")
@@ -513,7 +536,8 @@ def page_model(m, p, mem=None):
             colors.append(it["color"])
     brand = next((it["brand"] for it in its if it["brand"]), "")
     alt = f" ({ru}{' ' + mem_label(mem).lower() if mem else ''})" if ru else ""
-    p1 = (f"Купить {e(lower_first(full))}{e(alt)} в Москве можно в ATOMM: "
+    head = f"{e(full)} в ATOMM: " if gen else f"Купить {e(full)}{e(alt)} в Москве можно в ATOMM: "
+    p1 = (head
           + (f"в наличии {n} {plural(n, ['вариант', 'варианта', 'вариантов'])} по цене от {rub(lo)}"
              + (f" до {rub(hi)}" if hi and hi != lo else "") if n else "сейчас нет в наличии — оставьте заявку по телефону, привезём под заказ")
           + ".")
@@ -533,8 +557,8 @@ def page_model(m, p, mem=None):
     body.append(grid(its, f"/catalog.html#sub={quote(sub)}"))
     if not mem and n:
         body.append(f'<p class="more"><a class="btn" href="/catalog.html#sub={e(quote(sub))}">Выбрать и оформить заказ</a></p>')
-    body.append(f'<h2>О покупке {e(full)} в ATOMM</h2><div class="lead"><p>{p2}</p></div>{facts_html(wm)}')
-    qa = common_faq(full, its, wm)
+    body.append(f'<h2>{"Условия покупки" if gen else "О покупке " + e(full) + " в ATOMM"}</h2><div class="lead"><p>{p2}</p></div>{facts_html(wm)}')
+    qa = common_faq(f"«{full}»" if gen else full, its, wm)
     fh, fld = faq_block(qa)
     body.append(fh)
     # соседние модели раздела — перелинковка
@@ -543,13 +567,18 @@ def page_model(m, p, mem=None):
         sibs = [s for s in sibs if s.startswith("Apple iPhone")] + [s for s in sibs if not s.startswith("Apple iPhone")]
     if sibs:
         body.append(f"<h2>Другие модели: {e(lower_first(p['sec']))}</h2>{models_list(m, sibs[:24])}")
-    title = (f"Купить {lower_first(full)} в Москве" + (f" — цена от {rub(lo)}" if lo else "") + " | ATOMM")
-    desc = (f"{full}{alt}: {n} {plural(n, ['вариант', 'варианта', 'вариантов'])} в наличии" + (f" от {rub(lo)}" if lo else "")
-            + f". Новый, оригинал, гарантия {wm} мес. Доставка по Москве сегодня при заказе до 15:00, оплата при получении.")
+    if gen:
+        title = f"{full} — купить в Москве" + (f", цены от {rub(lo)}" if lo else "") + " | ATOMM"
+    else:
+        title = f"Купить {full} в Москве" + (f" — цена от {rub(lo)}" if lo else "") + " | ATOMM"
+    avail = (f"{n} {plural(n, ['вариант', 'варианта', 'вариантов'])} в наличии" + (f" от {rub(lo)}" if lo else "")
+             if n else "под заказ")
+    desc = (f"{full}{alt}: {avail}. Только новая оригинальная техника, гарантия {wm} мес. "
+            "Доставка по Москве сегодня при заказе до 15:00, оплата при получении.")
     img = next((it["img"] for it in st if it["img"]), None)
     return layout(title, desc, url, "\n".join(body), m,
-                  crumbs_ld + fld + agg_offer_ld(full, url, its, img, brand),
-                  og_image=f"{BASE}/img/{img}" if img else None)
+                  crumbs_ld + fld + ("" if gen else agg_offer_ld(full, url, its, img, brand)),
+                  robots=None if n else "noindex,follow", og_image=f"{BASE}/img/{img}" if img else None)
 
 
 def page_product(m, iid):
@@ -563,7 +592,7 @@ def page_product(m, iid):
     avail = it["stock"]
     trail = [(sec, sec_url(sec))]
     if sub in m["sub_slug"]:
-        trail.append((plain(sub), sub_url(m, sub)))
+        trail.append((display(sub, sec), sub_url(m, sub)))
     trail.append((nm, None))
     crumbs, crumbs_ld = breadcrumbs(trail)
     ld = {"@context": "https://schema.org", "@type": "Product", "name": it["name"], "image": img, "sku": iid,
@@ -592,7 +621,9 @@ def page_product(m, iid):
             f'<h1>{e(it["name"])}</h1><div class="price">{price_txt}</div>{buy}{dl}</div></div>']
     sibs = [x for x in m["sub_items"].get(sub, []) if x["id"] != iid]
     if sibs:
-        body.append(f"<h2>Другие варианты {e(plain(sub))}{' (' + e(alt) + ')' if alt else ''}</h2>{grid(sibs[:24])}")
+        hdr = (f"Другие товары: {e(display(sub, sec))}" if is_generic(sub)
+               else f"Другие варианты {e(plain(sub))}{' (' + e(alt) + ')' if alt else ''}")
+        body.append(f"<h2>{hdr}</h2>{grid(sibs[:24])}")
     title = f"{nm} — купить в Москве" + (f" за {price_txt}" if it["price"] else "") + " | ATOMM"
     desc = (f"{nm} — {price_txt}. Новый, оригинал, гарантия {months(wm)}. "
             "Доставка по Москве сегодня при заказе до 15:00 или бесплатный самовывоз. Оплата при получении.")
@@ -619,7 +650,7 @@ def not_found(m):
             'Посмотрите <a href="/catalog/">каталог</a> или <a href="/catalog/iphone/">iPhone</a>.</p></div>')
     if m:
         body += f"<h2>Разделы</h2>{models_list(m, [s for s in m['subs'] if s.startswith('Apple iPhone')][:12])}"
-    return layout("Страница не найдена | ATOMM", "Страница не найдена", "/catalog/", body, m, robots="noindex,follow")
+    return layout("Страница не найдена | ATOMM", "Страница не найдена", None, body, m, robots="noindex,follow")
 
 
 # ---------------------------------------------------------------- ссылки для статических страниц
@@ -629,7 +660,7 @@ def catalog_links(m):
     for sec in m["secs"]:
         subs = [s for s in m["subs"] if m["sub_sec"][s] == sec][:14]
         cols.append(f'<div><a class="h" href="{sec_url(sec)}">{e(sec)}</a>' + "".join(
-            f'<a href="{sub_url(m, s)}">{e(plain(s))}</a>' for s in subs) + "</div>")
+            f'<a href="{sub_url(m, s)}">{e(display(s, sec))}</a>' for s in subs) + "</div>")
     return ('<section class="seo-links" aria-label="Разделы каталога"><style>'
             '.seo-links{max-width:1600px;margin:0 auto;padding:10px 32px 60px;display:grid;'
             'grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:22px;font-size:13px;color:#4a4e54}'
@@ -653,7 +684,7 @@ def sitemap(m):
         if p["kind"] in ("section", "collection"):
             urls.append((f"/catalog/{sl}/", "daily", "0.8"))
     for sl, p in m["pages"].items():
-        if p["kind"] == "model":
+        if p["kind"] == "model" and in_stock(p["items"]):
             urls.append((f"/catalog/{sl}/", "daily", "0.9" if p["sub"].startswith("Apple iPhone") else "0.7"))
             for ms in p["mems"]:
                 urls.append((f"/catalog/{sl}/{ms}/", "daily", "0.6"))
