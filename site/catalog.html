@@ -73,6 +73,8 @@ h1{font-weight:200;font-size:clamp(34px,4vw,58px);letter-spacing:-.04em;line-hei
 .bdg.dark{background:var(--ink);color:#eef0f2}
 .bdg.red{background:var(--red);color:#fff}
 .bdg.wr{background:none;color:var(--ink);font-weight:600}
+.tile.wr .badges{top:4px;left:6px}.tile.wr .ph{height:74%;transform:translateY(7%)}
+.mimg.wr .mph{height:70%;transform:translateY(6%)}
 .mimg .badges{left:16px;top:16px}.mimg .bdg{font-size:11px;padding:6px 9px}
 .cname{font-size:13.5px;line-height:1.35;min-height:54px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
 .cbrand{color:var(--mute);font-size:10px}
@@ -457,13 +459,13 @@ function render(){
 function plural(n,f){const a=n%100,b=n%10;if(a>10&&a<20)return f[2];if(b===1)return f[0];if(b>=2&&b<=4)return f[1];return f[2];}
 function cardHTML(i){const it=ITEMS[i];
   const b=[];if(isIphone(i))b.push(WR);if(it[6]===1)b.push('<span class="bdg dark">Как новый</span>');if(it[6]===2)b.push('<span class="bdg">Уценка</span>');if(!it[5])b.push('<span class="bdg red">Нет в наличии</span>');
-  return `<div class="card" data-i="${i}"><div class="tile">${pic(i,'ph')||icon(it[0],it[3])}<div class="badges">${b.join('')}</div></div>
+  return `<div class="card" data-i="${i}"><div class="tile${isIphone(i)?' wr':''}">${pic(i,'ph')||icon(it[0],it[3])}<div class="badges">${b.join('')}</div></div>
   <div class="cbrand mono">${it[1]>=0?D.brands[it[1]]:esc(D.subs[it[2]])}</div><div class="cname">${esc(it[3])}</div>
   <div class="crow"><div class="cprice">${it[4]?fmt(it[4]):'Цена по запросу'}</div><button class="add" data-add="${i}" ${(!it[5]||!it[4])?'disabled':''} aria-label="В корзину">+</button></div></div>`;}
 
 /* ---------- product modal ---------- */
 function openItem(i){const it=ITEMS[i];EC('detail',[ecomP(i,1)]);
-  $('#modal').innerHTML=`<button class="x" data-close>×</button><div class="mimg">${pic(i,'mph')||icon(it[0],it[3])}${isIphone(i)?'<div class="badges">'+WR+'</div>':''}</div>
+  $('#modal').innerHTML=`<button class="x" data-close>×</button><div class="mimg${isIphone(i)?' wr':''}">${pic(i,'mph')||icon(it[0],it[3])}${isIphone(i)?'<div class="badges">'+WR+'</div>':''}</div>
   <div class="mbody"><div class="mono" style="color:var(--mute)">${D.sections[it[0]]} · ${esc(D.subs[it[2]])}</div>
   <h2>${esc(it[3])}</h2>
   <div class="mprice">${it[4]?fmt(it[4]):'Цена по запросу'}</div>
