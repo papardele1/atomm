@@ -7,8 +7,8 @@
     g.textContent = 'html,body{max-width:100%;overflow-x:hidden}@supports(overflow:clip){html,body{overflow-x:clip}}';
     document.head.appendChild(g);
   })();
-  var LINKS = [['Главная', 'index.html'], ['Каталог', 'catalog.html'], ['Доставка', 'delivery.html'],
-               ['Гарантия', 'warranty.html'], ['Контакты', 'contacts.html']];
+  var LINKS = [['Главная', '/'], ['Каталог', '/catalog.html'], ['iPhone', '/catalog/iphone/'], ['Доставка', '/delivery.html'],
+               ['Гарантия', '/warranty.html'], ['Контакты', '/contacts.html']];
   var PHONE = '+79777773727', PHONE_TXT = '+7 977 777-37-27';
   var css = '' +
     '.mburger{display:none;width:44px;height:44px;border-radius:50%;border:1px solid rgba(28,30,33,.16);background:rgba(245,246,247,.6);' +
@@ -53,11 +53,11 @@
   var menu = document.createElement('div');
   menu.className = 'mmenu'; menu.setAttribute('aria-hidden', 'true');
   menu.innerHTML =
-    '<div class="mtop"><a class="mlogo" href="index.html">ATOMM<i>/store</i></a><button class="mclose" type="button" aria-label="Закрыть">×</button></div>' +
+    '<div class="mtop"><a class="mlogo" href="/">ATOMM<i>/store</i></a><button class="mclose" type="button" aria-label="Закрыть">×</button></div>' +
     '<nav class="mlinks">' + LINKS.map(function (l) {
       return '<a href="' + l[1] + '"' + (l[1] === here ? ' class="on"' : '') + '>' + l[0] + '</a>';
     }).join('') + '</nav>' +
-    '<div style="margin-top:14px;font-size:13px"><a href="offer.html" style="color:#55595f;margin-right:18px">Оферта</a><a href="privacy.html" style="color:#55595f">Политика конфиденциальности</a></div>' +
+    '<div style="margin-top:14px;font-size:13px"><a href="/offer.html" style="color:#55595f;margin-right:18px">Оферта</a><a href="/privacy.html" style="color:#55595f">Политика конфиденциальности</a></div>' +
     '<a class="mphone" href="tel:' + PHONE + '">' + PHONE_TXT + '</a>' +
     '<div class="mcontacts">' +
     '<a href="tel:' + PHONE + '"><i style="background:#1c1e21">' + ICONS.call + '</i>Позвонить</a>' +
@@ -83,7 +83,7 @@
     var f = document.createElement('footer');
     f.className = 'sitefoot';
     f.innerHTML = '<div>ИП Головин Руслан Андреевич · ИНН 502716211095 · ОГРНИП 322508100573880</div>' +
-      '<div><a href="offer.html">Публичная оферта</a><a href="privacy.html">Политика конфиденциальности</a><a href="tel:' + PHONE + '">' + PHONE_TXT + '</a></div>';
+      '<div><a href="/offer.html">Публичная оферта</a><a href="/privacy.html">Политика конфиденциальности</a><a href="tel:' + PHONE + '">' + PHONE_TXT + '</a></div>';
     document.body.appendChild(f);
   }
 })();

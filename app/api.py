@@ -353,12 +353,71 @@ if SITE:
             return JSONResponse({"ok": False}, status_code=503)
         return Response(x, media_type="application/xml; charset=utf-8", headers={"Cache-Control": "no-cache"})
 
+    import seo as _seo
+    from fastapi.responses import RedirectResponse
+
+    def _m():
+        return _seo.model(CATALOG, IMG_DIR)
+
+    def _404():
+        return HTMLResponse(_seo.not_found(_m()), status_code=404)
+
+    _HTML_HDR = {"Cache-Control": "public, max-age=300"}
+
     @app.get("/p/{iid}")
     def product(iid: str):
-        h = _feed.product_page(CATALOG, IMG_DIR, iid)
-        if not h:
-            return HTMLResponse('<meta http-equiv="refresh" content="0;url=/catalog.html">Товар не найден', status_code=404)
-        return HTMLResponse(h)
+        m = _m()
+        h = _seo.page_product(m, iid) if m else None
+        return HTMLResponse(h, headers=_HTML_HDR) if h else _404()
+
+    @app.get("/sitemap.xml")
+    def sitemap_xml():
+        m = _m()
+        if not m:
+            return FileResponse(os.path.join(SITE, "sitemap.xml"), media_type="application/xml")
+        return Response(_seo.sitemap(m), media_type="application/xml; charset=utf-8", headers=_HTML_HDR)
+
+    @app.get("/catalog")
+    def catalog_noslash():
+        return RedirectResponse("/catalog/", status_code=301)
+
+    @app.get("/catalog/")
+    def catalog_hub():
+        m = _m()
+        return HTMLResponse(_seo.page_hub(m), headers=_HTML_HDR) if m else _404()
+
+    @app.get("/catalog/{slug}")
+    def catalog_slug_noslash(slug: str):
+        return RedirectResponse(f"/catalog/{slug}/", status_code=301)
+
+    @app.get("/catalog/{slug}/")
+    def catalog_page(slug: str):
+        m = _m()
+        h = _seo.render(m, slug) if m else None
+        return HTMLResponse(h, headers=_HTML_HDR) if h else _404()
+
+    @app.get("/catalog/{slug}/{sub}")
+    def catalog_sub_noslash(slug: str, sub: str):
+        return RedirectResponse(f"/catalog/{slug}/{sub}/", status_code=301)
+
+    @app.get("/catalog/{slug}/{sub}/")
+    def catalog_subpage(slug: str, sub: str):
+        m = _m()
+        h = _seo.render(m, slug, sub) if m else None
+        return HTMLResponse(h, headers=_HTML_HDR) if h else _404()
+
+    @app.get("/catalog.html")
+    def catalog_html():
+        with open(os.path.join(SITE, "catalog.html"), encoding="utf-8") as f:
+            h = f.read()
+        m = _m()
+        if m:
+            h = h.replace("<!--SEO_LINKS-->", _seo.catalog_links(m))
+        return HTMLResponse(h, headers={"Cache-Control": "no-cache"})
+
+    @app.get("/index.html")
+    def index_html():
+        return RedirectResponse("/", status_code=301)
 
     app.mount("/img", _ImgFiles(directory=IMG_DIR), name="img")
     app.mount("/", StaticFiles(directory=SITE, html=True), name="site")
