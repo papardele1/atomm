@@ -343,5 +343,22 @@ if SITE:
                 r.headers["Cache-Control"] = "public, max-age=2592000, immutable"
             return r
 
+    import feed as _feed
+    from fastapi.responses import HTMLResponse, Response
+
+    @app.get("/feed.yml")
+    def feed_yml():
+        x = _feed.yml(CATALOG, IMG_DIR)
+        if not x:
+            return JSONResponse({"ok": False}, status_code=503)
+        return Response(x, media_type="application/xml; charset=utf-8", headers={"Cache-Control": "no-cache"})
+
+    @app.get("/p/{iid}")
+    def product(iid: str):
+        h = _feed.product_page(CATALOG, IMG_DIR, iid)
+        if not h:
+            return HTMLResponse('<meta http-equiv="refresh" content="0;url=/catalog.html">Товар не найден', status_code=404)
+        return HTMLResponse(h)
+
     app.mount("/img", _ImgFiles(directory=IMG_DIR), name="img")
     app.mount("/", StaticFiles(directory=SITE, html=True), name="site")
