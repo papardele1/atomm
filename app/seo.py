@@ -6,6 +6,7 @@
 /catalog/<модель>/                — модель, напр. /catalog/apple-iphone-18-pro-max/
 /catalog/<модель>/<память>/       — модель + объём памяти, напр. /catalog/apple-iphone-18-pro-max/256gb/
 /p/<id>                           — товар
+/guides/<slug>/                   — статьи-гайды (seo_content.GUIDES)
 /sitemap.xml                      — карта сайта из актуального каталога
 """
 import html
@@ -16,6 +17,7 @@ import time
 from urllib.parse import quote
 
 import feed
+import seo_content
 
 BASE = feed.BASE
 PICKUP = feed.PICKUP
@@ -66,6 +68,11 @@ _RU = [(r"\biPhone\b", "айфон"), (r"\bPro Max\b", "про макс"), (r"\b
        (r"\bAirPods\b", "аирподс"), (r"\bSamsung\b", "самсунг"), (r"\bXiaomi\b", "сяоми")]
 
 
+def sub_section(sub, its):
+    """Раздел подраздела — по большинству товаров (общая логика с фидом, см. feed.sub_section)."""
+    return feed.sub_section(sub, [it["sec"] for it in its])
+
+
 def slugify(s):
     s = s.lower().replace("+", " plus ").replace('"', " ")
     s = "".join(_TR.get(ch, ch) for ch in s)
@@ -80,6 +87,11 @@ def ru_name(sub):
     for a, b in _RU:
         r = re.sub(a, b, r)
     return r if r != s and not re.search(r"[A-Za-z]", r) else ""
+
+
+def ru_title(ru):
+    """'айфон 18 про макс' -> 'айфон 18 Про Макс' (для title: бренд строчными, как в запросах, линейка с заглавной)."""
+    return " ".join(w if w == "айфон" or not w[:1].isalpha() else w[:1].upper() + w[1:] for w in ru.split())
 
 
 def plain(sub):
@@ -97,6 +109,11 @@ def display(sub, sec):
     if sub.startswith("Для "):
         return f"{sec} {sub[:1].lower()}{sub[1:]}"
     return plain(sub)
+
+
+def crumb_label(sub, sec):
+    """Подпись подраздела в крошках: тёзка раздела («Аксессуары» в «Аксессуарах») — «Все аксессуары»."""
+    return f"Все {sec[:1].lower()}{sec[1:]}" if sub == sec else display(sub, sec)
 
 
 def lower_first(s):
@@ -144,6 +161,26 @@ def mem_slug(gb):
     return f"{gb // 1024}tb" if gb >= 1024 and gb % 1024 == 0 else f"{gb}gb"
 
 
+_COLOR_FULL = re.compile(r"цвет:\s*([^,]+)", re.I)
+_SIM_BOTH = "Можно выбрать версию только с eSIM или с Nano SIM + eSIM — тип SIM указан в названии каждого товара."
+_SIM_ESIM = "Все варианты в наличии — только с eSIM, без лотка для физической SIM-карты."
+_SIM_NANO = "Все варианты в наличии — с Nano SIM + eSIM: можно вставить обычную SIM-карту."
+_FMT = __import__("string").Formatter()
+
+
+def sim_kind(name):
+    if re.search(r"nano", name, re.I):
+        return "nano"
+    if re.search(r"esim", name, re.I):
+        return "esim"
+    return None
+
+
+def join_ru(xs):
+    xs = list(xs)
+    return ", ".join(xs[:-1]) + " и " + xs[-1] if len(xs) > 1 else (xs[0] if xs else "")
+
+
 def color_of(name):
     m = _COLOR.search(name)
     return m.group(1).strip().lower() if m else None
@@ -168,10 +205,10 @@ def model(catalog_path, img_dir):
         items.append({"id": iid, "sec": secs[sec], "brand": brands[br] if br >= 0 else "", "sub": subs[sub],
                       "name": name, "price": price, "stock": bool(stock and price), "cond": cond,
                       "img": idx.get(iid), "pos": pos, "mem": memory_of(name, secs[sec]), "color": color_of(name)})
-    sub_items, sub_sec = {}, {}
+    sub_items = {}
     for it in items:
         sub_items.setdefault(it["sub"], []).append(it)
-        sub_sec.setdefault(it["sub"], it["sec"])
+    sub_sec = {s: sub_section(s, its) for s, its in sub_items.items()}
     # слаги моделей; при совпадении — добавляем раздел
     used = set(SECTION_SLUGS.values()) | {c[0] for c in COLLECTIONS}
     sub_slug = {}
@@ -300,6 +337,12 @@ footer .mono{color:#6b6f75;margin-bottom:8px}
 .price{font-size:34px;font-weight:300;letter-spacing:-.02em;margin-bottom:22px}
 dl{display:grid;grid-template-columns:auto 1fr;gap:10px 22px;margin-top:28px;font-size:15px}
 dt{color:#6b6f75}
+.seo-text a,.article a{text-decoration:underline}
+.article{max-width:860px;color:#3f4348;font-size:16px}.article p{margin-top:10px}.article h2{color:#1c1e21}
+.article .meta{font-size:13px;color:#6b6f75;margin-top:6px}.article .src{font-size:13px;color:#6b6f75;margin-top:28px}
+.cmp{width:100%;border-collapse:collapse;margin:14px 0;font-size:14px}.cmp th,.cmp td{text-align:left;padding:9px 10px;border-bottom:1px solid rgba(28,30,33,.12);vertical-align:top}
+.cmp th{font-weight:500}
+@media(max-width:860px){.cmp{font-size:13px}.cmp th,.cmp td{padding:7px 5px}}
 @media(max-width:860px){header{padding:16px 18px}header nav{display:none}.page{padding:20px 18px 50px}.pmain{grid-template-columns:1fr;gap:22px}.grid{grid-template-columns:repeat(2,1fr);gap:10px}.card{padding:10px}.card .pr{font-size:16px}footer{padding:28px 18px 40px}}
 """
 
@@ -386,10 +429,12 @@ def grid(its, more_url=None):
 
 
 def faq_block(qa):
+    """qa: [(вопрос, ответ)] или [(вопрос, ответ-текст, ответ-HTML)] — HTML показывается на странице, текст — в JSON-LD."""
+    qa = [x for x in qa if x[1].strip()]
     h = '<section class="faq"><h2>Вопросы и ответы</h2>' + "".join(
-        f"<details><summary>{e(q)}</summary><p>{e(a)}</p></details>" for q, a in qa) + "</section>"
+        f"<details><summary>{e(x[0])}</summary><p>{x[2] if len(x) > 2 else e(x[1])}</p></details>" for x in qa) + "</section>"
     ld = {"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [
-        {"@type": "Question", "name": q, "acceptedAnswer": {"@type": "Answer", "text": a}} for q, a in qa]}
+        {"@type": "Question", "name": x[0], "acceptedAnswer": {"@type": "Answer", "text": x[1]}} for x in qa]}
     return h, _ld(ld)
 
 
@@ -508,6 +553,96 @@ def page_group(m, p):
                   crumbs_ld + fld)
 
 
+def variants_ctx(p):
+    """Данные каталога для текстов seo_content — только по товарам в наличии. Нет наличия/данных — пустые строки
+    (фрагменты текста с пустыми плейсхолдерами не выводятся)."""
+    its = in_stock(p["items"])
+    colors = []
+    for it in its:
+        mt = _COLOR_FULL.search(it["name"])
+        c = mt.group(1).strip() if mt else None
+        if c and c not in colors:
+            colors.append(c)
+    mems = sorted({it["mem"] for it in its if it["mem"]})
+    sims = {sim_kind(it["name"]) for it in its} - {None}
+    sim = _SIM_BOTH if {"nano", "esim"} <= sims else _SIM_ESIM if sims == {"esim"} else _SIM_NANO if sims == {"nano"} else ""
+    lo, _ = price_range(p["items"])
+    links = ", ".join(f'<a href="/catalog/{p["slug"]}/{ms}/">{mem_label(gb)}</a>' for ms, gb in p["mems"].items())
+    sim_answer = ("Да, есть: в наличии версии с Nano SIM + eSIM и только с eSIM — тип SIM указан в названии каждого товара."
+                  if {"nano", "esim"} <= sims else
+                  "Да, все варианты в наличии — с Nano SIM + eSIM: можно вставить обычную SIM-карту." if sims == {"nano"} else
+                  "Нет, в наличии только версии с eSIM — без лотка для физической SIM-карты." if sims == {"esim"} else "")
+    return {"colors": join_ru(colors), "mems": join_ru(mem_label(x) for x in mems), "sim": sim, "sim_answer": sim_answer,
+            "lo": f"от {rub(lo)}" if lo else "", "mem_links": (links, "")}
+
+
+def text_ctx(m, p):
+    """Плейсхолдеры: значения — строка (экранируется) или пара (html, text) для доверенного HTML."""
+    ctx = variants_ctx(p)
+    for sl, pg in m["pages"].items():
+        if pg["kind"] == "model" and in_stock(pg["items"]):
+            nm = display(pg["sub"], pg["sec"])
+            ctx["link_" + sl.replace("-", "_")] = (f'<a href="/catalog/{sl}/">{e(nm)}</a>', nm)
+    gt = seo_content.GUIDES["iphone-18-pro-vs-18-pro-max"]["title"]
+    ctx["guide"] = (f'<a href="{seo_content.GUIDE_18PRO}">«{e(gt)}»</a>', f"«{gt}»")
+    return ctx
+
+
+def _frag(t, ctx, as_html):
+    """Фрагмент текста или None, если какой-то плейсхолдер пуст/неизвестен."""
+    vals = {}
+    for _, k, _, _ in _FMT.parse(t):
+        if k is None:
+            continue
+        v = ctx.get(k)
+        if isinstance(v, tuple):
+            v = v[0] if as_html else v[1]
+        elif v and as_html:
+            v = e(v)
+        if not v:
+            return None
+        vals[k] = v
+    return t.format_map(vals)
+
+
+def frags(parts, ctx, as_html):
+    out = [_frag(t, ctx, as_html) for t in parts]
+    return out[0] is not None, " ".join(x for x in out if x)
+
+
+def model_text(m, p):
+    """(HTML-блок с H2, доп. вопросы FAQ [(q, text, html)]) для страницы модели из seo_content.MODELS или ("", [])."""
+    c = seo_content.MODELS.get(p["slug"])
+    if not c:
+        return "", []
+    ctx = text_ctx(m, p)
+    paras = "".join(f"<p>{h}</p>" for h in (frags(t, ctx, True)[1] for t in c["paras"]) if h)
+    qa = []
+    for q, parts in c.get("faq", []):
+        ok, txt = frags(parts, ctx, False)
+        if ok and txt.strip():
+            qa.append((q, re.sub(r"\s+", " ", txt).strip(), frags(parts, ctx, True)[1]))
+    return (f'<h2>{e(c["h2"])}</h2><div class="lead seo-text">{paras}</div>' if paras else ""), qa
+
+
+def model_title(full, sub, ru, lo, mem=False):
+    """Title модели. Русская форма — только для iPhone (ru_name «айфон …») без скобок/кавычек в названии;
+    длину держим ≤ 80 символов, слово «цена» стараемся сохранить."""
+    plain_t = f"Купить {full} в Москве" + (f" — цена от {rub(lo)}" if lo else "") + " | ATOMM"
+    if not (ru.startswith("айфон") and "(" not in sub and '"' not in sub):
+        return plain_t
+    rt = ru_title(ru)
+    if lo:
+        cands = [f"Купить {full} ({rt}) в Москве — цена от {rub(lo)} | ATOMM",
+                 f"{full} ({rt}) — купить в Москве, цена от {rub(lo)} | ATOMM",
+                 f"{full} ({rt}) — цена в Москве от {rub(lo)} | ATOMM"]
+    else:
+        cands = [f"Купить {full} ({rt}) в Москве | ATOMM"]
+    if mem:          # страницы памяти: единый вид «Купить …», без альтернативных формулировок
+        cands = cands[:1]
+    return next((t for t in cands if len(t) <= 80), plain_t)
+
+
 def page_model(m, p, mem=None):
     sub = p["sub"]
     its = p["items"]
@@ -521,7 +656,7 @@ def page_model(m, p, mem=None):
     trail = [(p["sec"], sec_url(p["sec"]))]
     if sub.startswith("Apple iPhone"):
         trail.append(("iPhone", "/catalog/iphone/"))
-    trail.append((nm, f"/catalog/{p['slug']}/" if mem else None))
+    trail.append((crumb_label(sub, p["sec"]), f"/catalog/{p['slug']}/" if mem else None))
     if mem:
         trail.append((mem_label(mem), None))
     crumbs, crumbs_ld = breadcrumbs(trail)
@@ -546,7 +681,8 @@ def page_model(m, p, mem=None):
         det.append("объём памяти: " + ", ".join(mem_label(x) for x in mems))
     if colors:
         det.append("цвета: " + ", ".join(colors[:12]))
-    p2 = ("Доступные варианты — " + "; ".join(e(x) for x in det) + ". ") if det else ""
+    has_text = not mem and p["slug"] in seo_content.MODELS   # цвета и память уже перечислены в тексте модели
+    p2 = ("Доступные варианты — " + "; ".join(e(x) for x in det) + ". ") if det and not has_text else ""
     p2 += (f"Все устройства новые и оригинальные, гарантия {months(wm)}. Заказ до 15:00 — доставим по Москве в тот же день "
            f"с 17:00 до 22:00, доставка {DELIVERY_COST} ₽; самовывоз бесплатно ({e(PICKUP)}). Оплата наличными при получении.")
     body = [crumbs, f"<h1>{e(full)}</h1>", f'<div class="lead"><p>{p1}</p></div>']
@@ -557,8 +693,13 @@ def page_model(m, p, mem=None):
     body.append(grid(its, f"/catalog.html#sub={quote(sub)}"))
     if not mem and n:
         body.append(f'<p class="more"><a class="btn" href="/catalog.html#sub={e(quote(sub))}">Выбрать и оформить заказ</a></p>')
+    # уникальный текст — только на странице модели (на страницах памяти он был бы дублем)
+    text_html, text_qa = model_text(m, p) if not mem else ("", [])
+    if text_html:
+        body.append(text_html)
     body.append(f'<h2>{"Условия покупки" if gen else "О покупке " + e(full) + " в ATOMM"}</h2><div class="lead"><p>{p2}</p></div>{facts_html(wm)}')
     qa = common_faq(f"«{full}»" if gen else full, its, wm)
+    qa = qa[:1] + text_qa + qa[1:]
     fh, fld = faq_block(qa)
     body.append(fh)
     # соседние модели раздела — перелинковка
@@ -570,7 +711,7 @@ def page_model(m, p, mem=None):
     if gen:
         title = f"{full} — купить в Москве" + (f", цены от {rub(lo)}" if lo else "") + " | ATOMM"
     else:
-        title = f"Купить {full} в Москве" + (f" — цена от {rub(lo)}" if lo else "") + " | ATOMM"
+        title = model_title(full, sub, ru, lo, bool(mem))
     avail = (f"{n} {plural(n, ['вариант', 'варианта', 'вариантов'])} в наличии" + (f" от {rub(lo)}" if lo else "")
              if n else "под заказ")
     desc = (f"{full}{alt}: {avail}. Только новая оригинальная техника, гарантия {wm} мес. "
@@ -590,9 +731,10 @@ def page_product(m, iid):
     wm = feed.warranty_months(sub)
     img = f"{BASE}/img/{it['img']}" if it["img"] else f"{BASE}/apple-touch-icon.png"
     avail = it["stock"]
-    trail = [(sec, sec_url(sec))]
+    # раздел в крошках — раздел подраздела (как на странице подраздела), а не раздел самого товара
+    trail = [(m["sub_sec"][sub], sec_url(m["sub_sec"][sub]))] if sub in m["sub_slug"] else [(sec, sec_url(sec))]
     if sub in m["sub_slug"]:
-        trail.append((display(sub, sec), sub_url(m, sub)))
+        trail.append((crumb_label(sub, m["sub_sec"][sub]), sub_url(m, sub)))
     trail.append((nm, None))
     crumbs, crumbs_ld = breadcrumbs(trail)
     ld = {"@context": "https://schema.org", "@type": "Product", "name": it["name"], "image": img, "sku": iid,
@@ -645,6 +787,63 @@ def render(m, slug, sub=None):
     return page_group(m, p)
 
 
+def _fill(tpl, ctx, escape):
+    return tpl.format_map({k: (e(v) if escape else v) for k, v in ctx.items()})
+
+
+def guide_url(slug):
+    return f"/guides/{slug}/"
+
+
+def page_guide(m, slug):
+    """Статья /guides/<slug>/ из seo_content.GUIDES; цены и ссылки на память — из каталога."""
+    g = seo_content.GUIDES.get(slug)
+    if not g:
+        return None
+    url = guide_url(slug)
+    models = [m["pages"].get(s) for s in g["models"]]
+    models = [pg if pg and pg["kind"] == "model" else None for pg in models]
+    ctx = {"lo_pro": "нет в наличии", "lo_max": "нет в наличии", "colors_sentence": ""}
+    links = []
+    for key, pg in zip(("pro", "max"), models):
+        if not pg:
+            continue
+        v = variants_ctx(pg)
+        if v["lo"]:
+            ctx[f"lo_{key}"] = v["lo"]
+        if v["colors"] and not ctx["colors_sentence"]:
+            ctx["colors_sentence"] = f" В ATOMM сейчас есть: {v['colors']}."
+        if in_stock(pg["items"]):
+            nm = display(pg["sub"], pg["sec"])
+            links.append(f'<p><a href="/catalog/{pg["slug"]}/">Все {e(nm)}</a>'
+                         + (f" — по памяти: {v['mem_links'][0]}" if v["mem_links"][0] else "") + ".</p>")
+    body_html = _fill(g["body"], ctx, True)
+    if links:
+        body_html += "<h2>Где посмотреть варианты</h2>" + "".join(links)
+    crumbs, crumbs_ld = breadcrumbs([("iPhone", "/catalog/iphone/"), (g["title"], None)])
+    src = "".join(f'<li><a href="{e(u)}" rel="nofollow noopener" target="_blank">{e(u)}</a></li>' for u in g["sources"])
+    d = g["modified"]
+    body = [crumbs, f"<h1>{e(g['title'])}</h1>", '<article class="article">',
+            f'<p class="meta">Обновлено {d[8:10]}.{d[5:7]}.{d[:4]} · ATOMM</p>', body_html,
+            f'<div class="src">Характеристики — по данным Apple и обзоров:<ul>{src}</ul></div></article>']
+    for pg in models:
+        if pg and in_stock(pg["items"]):
+            body.append(f"<h2>{e(display(pg['sub'], pg['sec']))} в наличии</h2>"
+                        + grid(sorted(in_stock(pg["items"]), key=lambda it: it["price"])[:8]))
+    ld = {"@context": "https://schema.org", "@type": "Article", "headline": g["title"], "description": g["desc"],
+          "inLanguage": "ru", "datePublished": g["published"], "dateModified": g["modified"],
+          "mainEntityOfPage": BASE + url, "url": BASE + url,
+          "author": {"@type": "Organization", "name": "ATOMM", "url": BASE + "/"},
+          "publisher": {"@type": "Organization", "name": "ATOMM", "url": BASE + "/",
+                        "logo": {"@type": "ImageObject", "url": BASE + "/icon-512.png"}},
+          "about": [{"@type": "Product", "name": pg["sub"], "url": f"{BASE}/catalog/{pg['slug']}/"} for pg in models if pg]}
+    img = next((it["img"] for pg in models if pg for it in in_stock(pg["items"]) if it["img"]), None)
+    if img:
+        ld["image"] = f"{BASE}/img/{img}"
+    return layout(g["seo_title"], g["desc"], url, "\n".join(body), m, crumbs_ld + _ld(ld),
+                  og_image=f"{BASE}/img/{img}" if img else None)
+
+
 def not_found(m):
     body = ('<h1>Страница не найдена</h1><div class="lead"><p>Возможно, товар закончился или адрес изменился. '
             'Посмотрите <a href="/catalog/">каталог</a> или <a href="/catalog/iphone/">iPhone</a>.</p></div>')
@@ -688,6 +887,8 @@ def sitemap(m):
             urls.append((f"/catalog/{sl}/", "daily", "0.9" if p["sub"].startswith("Apple iPhone") else "0.7"))
             for ms in p["mems"]:
                 urls.append((f"/catalog/{sl}/{ms}/", "daily", "0.6"))
+    for gs in seo_content.GUIDES:
+        urls.append((guide_url(gs), "weekly", "0.6"))
     for it in m["items"]:
         if it["stock"] and it["cond"] == 0:
             urls.append((f"/p/{it['id']}", "daily", "0.5"))
