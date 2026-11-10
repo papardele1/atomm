@@ -486,11 +486,18 @@ def catalog_items():
         yield r[0], r[4], d["brands"][r[2]] if r[2] >= 0 else "", d["sections"][r[1]]
 
 
+# Разделы, где у разных товаров одного «ключа» (бренд|модель|цвет) бывают разные вещи (чехлы, кабели, наушники):
+# там фото берём для каждого товара отдельно (запись "id:<id>" в keys.json), а не одно на ключ.
+ITEM_LEVEL_SECS = {"Аксессуары", "Аудио", "Техника для дома и красоты", "Камеры и дроны", "Игры и приставки"}
+
+
 def rebuild_index(state):
     idx = {}
     for iid, name, brand, _ in catalog_items():
         k = key_of(name, brand)[0]
-        f = state.get(k, {}).get("f")
+        ks = state.get(k, {})
+        f = None if ks.get("manual") else (state.get("id:" + iid) or {}).get("f")
+        f = f or ks.get("f")
         if f:
             idx[iid] = f
     os.makedirs(IMG_DIR, exist_ok=True)
@@ -531,11 +538,22 @@ def fill_from_store(limit=None):
     seen, work = set(), []
     for iid, name, brand, sec in catalog_items():
         k = key_of(name, brand)[0]
+        if iid not in urls:
+            continue
+        if sec in ITEM_LEVEL_SECS:  # своё фото у каждого товара
+            if (state.get(k) or {}).get("manual"):
+                continue
+            ik = "id:" + iid
+            ist = state.get(ik) or {}
+            if ist.get("f") or ist.get("block") or ist.get("s77_miss", 0) > time.time() - 3 * 86400:
+                continue
+            work.append((ik, iid, name))
+            continue
         if k in seen:
             continue
         seen.add(k)
         st = state.get(k) or {}
-        if st.get("f") or st.get("block") or st.get("s77_miss", 0) > time.time() - 3 * 86400 or iid not in urls:
+        if st.get("f") or st.get("block") or st.get("s77_miss", 0) > time.time() - 3 * 86400:
             continue
         work.append((k, iid, name))
     log.info("фото со Store77: к обработке %d ключей", len(work))
@@ -557,7 +575,7 @@ def fill_from_store(limit=None):
             rec = {"f": fn, "u": m.group(1), "t": int(time.time()), "src": "store77"}
 
             def ok(cur, k=k, rec=rec):
-                if not (cur.get(k) or {}).get("f"):  # фото могли добавить параллельно (вручную) — не трогаем
+                if not (cur.get(k) or {}).get("manual"):  # ручные фото не трогаем
                     cur[k] = rec
             state = update_state(ok)
             got += 1
