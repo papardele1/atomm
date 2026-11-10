@@ -483,7 +483,82 @@ def todo(state):
     return out
 
 
+URLS = os.path.join(os.path.dirname(CATALOG), "urls.json")
+_OG = re.compile(r'<meta property="og:image" content="([^"]+)"')
+
+
+def fill_from_store(limit=None):
+    """Фото для товаров, у которых их ещё нет: главная картинка карточки Store77 (og:image) — каталог взят оттуда,
+    поэтому фото точно той же модели и цвета. Фон делаем прозрачным (серый фон сайта), как у остальных фото."""
+    try:
+        with open(URLS) as f:
+            urls = json.load(f)
+    except (OSError, ValueError):
+        log.info("нет urls.json — пропускаю фото со Store77")
+        return 0
+    sys.path.insert(0, os.path.dirname(__file__))
+    import parser as store  # сессия и обход защиты Store77
+    state = load_state()
+    seen, work = set(), []
+    for iid, name, brand, sec in catalog_items():
+        k = key_of(name, brand)[0]
+        if k in seen:
+            continue
+        seen.add(k)
+        st = state.get(k) or {}
+        if st.get("f") or st.get("block") or st.get("s77_miss", 0) > time.time() - 3 * 86400 or iid not in urls:
+            continue
+        work.append((k, iid, name))
+    log.info("фото со Store77: к обработке %d ключей", len(work))
+    got = 0
+    for n, (k, iid, name) in enumerate(work[:limit] if limit else work):
+        try:
+            h = store.get(store.BASE + urls[iid])
+            m = _OG.search(h or "")
+            if not m or "nophoto" in m.group(1).lower() or "no_photo" in m.group(1).lower():
+                raise ValueError("нет og:image")
+            r = store.session.get(m.group(1), timeout=30)
+            r.raise_for_status()
+            im = Image.open(io.BytesIO(r.content))
+            im.load()
+            if min(im.size) < 200:
+                raise ValueError(f"маленькое фото {im.size}")
+            im, frac = trim(im)
+            fn = save(im, k)
+            cur = load_state()  # фото могли добавить параллельно — перечитываем перед записью
+            cur[k] = {"f": fn, "u": m.group(1), "t": int(time.time()), "src": "store77"}
+            state = cur
+            got += 1
+            log.info("✓ store77 %s", name[:80])
+        except Exception as e:  # noqa: BLE001
+            cur = load_state()
+            cur.setdefault(k, {})["s77_miss"] = int(time.time())
+            cur[k]["why_s77"] = str(e)[:120]
+            state = cur
+            log.info("✗ store77 %s — %s", name[:70], e)
+        write_json(STATE, state)
+        if n % 20 == 19:
+            rebuild_index(state)
+        time.sleep(0.6 + random.random() * 0.8)
+    rebuild_index(load_state())
+    log.info("фото со Store77: добавлено %d", got)
+    return got
+
+
+def _merge(state, changed):
+    """Записать только свои изменения поверх файла: фото могли добавить параллельно (Store77, ручные)."""
+    cur = load_state()
+    for k in changed:
+        if (cur.get(k) or {}).get("f") and not state[k].get("f"):
+            continue  # кто-то уже нашёл фото — не затираем промахом
+        cur[k] = state[k]
+    write_json(STATE, cur)
+    return cur
+
+
 def run(limit=None, sample=None):
+    if not sample:
+        fill_from_store(limit)
     state = load_state()
     work = todo(state)
     if sample:
@@ -497,7 +572,7 @@ def run(limit=None, sample=None):
                 if by[sec] and len(work) < sample:
                     work.append(by[sec].pop(random.randrange(len(by[sec]))))
     log.info("к обработке: %d ключей", len(work) if not limit else min(limit, len(work)))
-    done = []
+    done, changed = [], set()
     for n, (k, name, brand, sec) in enumerate(work[:limit] if limit else work):
         try:
             key, best, why = find(name, brand, sec)
@@ -511,15 +586,17 @@ def run(limit=None, sample=None):
         if best:
             fn = save(best[1], key)
             state[key] = {"f": fn, "u": best[2], "t": int(time.time())}
+            changed.add(key)
             log.info("✓ %s → %s (%.1f, фон %.0f%%)", name[:70], urlparse(best[2]).netloc, best[0], best[3] * 100)
         else:
-            state[key] = {"t": int(time.time()), "why": why}
+            state[key] = {**{x: y for x, y in state.get(key, {}).items() if x.startswith(("s77", "why_s77"))}, "t": int(time.time()), "why": why}
+            changed.add(key)
             log.info("✗ %s — %s", name[:70], why)
         done.append((name, sec, state[key]))
         if n % 10 == 9:
-            write_json(STATE, state)
+            state = _merge(state, changed)
             rebuild_index(state)
-    write_json(STATE, state)
+    state = _merge(state, changed)
     log.info("в индексе товаров с фото: %d", rebuild_index(state))
     return done
 

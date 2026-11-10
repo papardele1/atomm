@@ -43,6 +43,7 @@ services:
     command: ["sh", "-c", "until [ -f /www/img/ENABLED ]; do sleep 60; done; sleep 120; python /app/app/photos.py --loop"]
     environment:
       ATOMM_CATALOG: /www/catalog.json
+      ATOMM_PROXY: ${ATOMM_PROXY:-}
     volumes:
       - www:/www
 

@@ -206,6 +206,11 @@ def main():
         log.error("Собрано %s товаров против %s в прошлый раз — каталог НЕ обновлён", n, prev)
         sys.exit(2)
     catalog_lib.write_atomic(data, OUT)
+    try:  # адреса карточек Store77 по id товара — для фото (photos.py берёт с карточки og:image)
+        urls = {catalog_lib.product_id(p["url"]): p["url"] for p in products}
+        catalog_lib.write_atomic(urls, os.path.join(os.path.dirname(OUT), "urls.json"))
+    except Exception as e:  # noqa: BLE001
+        log.warning("urls.json не записан: %s", e)
     log.info("Готово: %s товаров (было %s) за %.0f с", n, prev, time.time() - t0)
 
 
