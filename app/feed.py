@@ -34,6 +34,26 @@ def _load(catalog_path, img_dir):
     return _cache["data"]
 
 
+_ACC_SEC = "Аксессуары"
+_ACC_SUB = re.compile(r"аксессуар|чехл|кабел|заряд|ремеш|плёнк|пленк|стекл|^для\s", re.I)
+
+
+def sub_section(sub, secs):
+    """Раздел подраздела по большинству его товаров (secs — разделы товаров в порядке каталога).
+    Подраздел-тёзка раздела («Аксессуары») всегда относится к своему разделу. Раздел «Аксессуары» не перетягивает
+    подразделы устройств («Пылесосы Dyson», «Товары для дома»): в источнике туда попадают сами устройства.
+    Используется и сайтом (seo.py), и фидом — чтобы категории совпадали."""
+    cnt, first = {}, {}
+    for k, sec in enumerate(secs):
+        cnt[sec] = cnt.get(sec, 0) + 1
+        first.setdefault(sec, k)
+    if sub in cnt:
+        return sub
+    if _ACC_SEC in cnt and len(cnt) > 1 and not _ACC_SUB.search(sub):
+        cnt.pop(_ACC_SEC)
+    return max(cnt, key=lambda sec: (cnt[sec], -first[sec]))
+
+
 def is_iphone(sub):
     return sub.startswith("Apple iPhone")
 
@@ -66,7 +86,13 @@ def yml(catalog_path, img_dir):
     secs, brands, subs = d["sections"], d["brands"], d["subs"]
     items = list(feed_items(d, idx))
     used_subs = sorted({it[3] for it in items})
-    used_secs = sorted({it[1] for it in items})
+    # родитель подраздела — как на сайте: раздел большинства всех товаров подраздела
+    sub_secs = {}
+    for it in d["items"]:
+        sub_secs.setdefault(it[3], []).append(secs[it[1]])
+    sec_idx = {n: k for k, n in enumerate(secs)}
+    parent_of = {s: sec_idx[sub_section(subs[s], sub_secs[s])] for s in used_subs}
+    used_secs = sorted({it[1] for it in items} | set(parent_of.values()))
     out = ['<?xml version="1.0" encoding="UTF-8"?>',
            f'<yml_catalog date="{time.strftime("%Y-%m-%dT%H:%M:%S+03:00")}">', "<shop>",
            f"<name>{SHOP}</name>", f"<company>{e(COMPANY)}</company>", f"<url>{BASE}/</url>",
@@ -75,7 +101,7 @@ def yml(catalog_path, img_dir):
     for s in used_secs:
         out.append(f'<category id="{s + 1}">{e(secs[s])}</category>')
     for s in used_subs:
-        parent = next(it[1] for it in items if it[3] == s) + 1
+        parent = parent_of[s] + 1
         out.append(f'<category id="{1000 + s}" parentId="{parent}">{e(subs[s])}</category>')
     out.append("</categories>")
     out.append(f'<delivery-options><option cost="{DELIVERY_COST}" days="0-1" order-before="15"/></delivery-options>')

@@ -410,6 +410,16 @@ if SITE:
         h = _seo.render(m, slug, sub) if m else None
         return HTMLResponse(h, headers=_HTML_HDR) if h else _404()
 
+    @app.get("/guides/{slug}")
+    def guide_noslash(slug: str, request: Request):
+        return _redir(f"/guides/{slug}/", request)
+
+    @app.get("/guides/{slug}/")
+    def guide_page(slug: str):
+        m = _m()
+        h = _seo.page_guide(m, slug) if m else None
+        return HTMLResponse(h, headers=_HTML_HDR) if h else _404()
+
     @app.get("/catalog.html")
     def catalog_html():
         with open(os.path.join(SITE, "catalog.html"), encoding="utf-8") as f:
