@@ -297,6 +297,47 @@ def resolve_subs(rows, sec_of, name_of, sub_of, set_sub):
         if best:
             set_sub(r, best)
             moved += 1
+    moved += _resolve_by_core(rows, sec_of, name_of, sub_of, set_sub)
+    return moved
+
+
+_TYPE_WORD = re.compile(r"^(телефон|смартфон|планшет|ноутбук|моноблок|настольный компьютер|умные часы|часы)\s+", re.I)
+_SPEC_CUT = re.compile(r"(\d+\s*/\s*\d+|\d+\s*(?:гб|тб|tб|gb|tb)\b|,|wi-?fi|цвет)", re.I)
+
+
+def model_core(name):
+    """«Планшет Apple iPad Air 13 M4 1 ТБ Wi-Fi (Голубой)» → ('apple','ipad','air','13','m4'): модель без памяти и цвета."""
+    n = _TYPE_WORD.sub("", name.strip())
+    m = _SPEC_CUT.search(n)
+    if m:
+        n = n[:m.start()]
+    return tuple(re.sub(r"[^\w.]+", " ", n.lower()).split())
+
+
+def _resolve_by_core(rows, sec_of, name_of, sub_of, set_sub):
+    """Остаток общих подразделов («Планшеты», «Ноутбуки и компьютеры», «Apple iPad»): товар идёт в подраздел модели,
+    если у какого-то товара этого подраздела «ядро» названия (без памяти/цвета) — начало ядра нашего товара.
+    Берётся самое длинное совпадение, иначе товар остаётся на месте."""
+    cores = {}
+    for r in rows:
+        sub = sub_of(r)
+        if re.search(r"[A-Za-z]", sub) and re.search(r"\d", sub):
+            c = model_core(name_of(r))
+            if len(c) >= 3:
+                cores.setdefault(sec_of(r), {}).setdefault(c, set()).add(sub)
+    moved = 0
+    for r in rows:
+        sub = sub_of(r)
+        if re.search(r"\d", sub) or (re.search(r"[A-Za-z]", sub) and sub != "Apple iPad"):
+            continue
+        c = model_core(name_of(r))
+        best, bl = None, 0
+        for cc, ss in cores.get(sec_of(r), {}).items():
+            if len(cc) > bl and c[:len(cc)] == cc and len(ss) == 1:
+                best, bl = next(iter(ss)), len(cc)
+        if best:
+            set_sub(r, best)
+            moved += 1
     return moved
 
 
