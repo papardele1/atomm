@@ -460,19 +460,19 @@ function render(){
 }
 function plural(n,f){const a=n%100,b=n%10;if(a>10&&a<20)return f[2];if(b===1)return f[0];if(b>=2&&b<=4)return f[1];return f[2];}
 function cardHTML(i){const it=ITEMS[i];
-  const b=[];if(isIphone(i))b.push(WR);if(it[6]===1)b.push('<span class="bdg dark">Как новый</span>');if(it[6]===2)b.push('<span class="bdg">Уценка</span>');if(!it[5])b.push('<span class="bdg red">Нет в наличии</span>');
-  return `<div class="card" data-i="${i}"><div class="tile${isIphone(i)?' wr':''}">${pic(i,'ph')||icon(it[0],it[3])}<div class="badges">${b.join('')}</div></div>
+  const b=[];if(it[6]===1)b.push('<span class="bdg dark">Как новый</span>');if(it[6]===2)b.push('<span class="bdg">Уценка</span>');if(!it[5])b.push('<span class="bdg red">Нет в наличии</span>');
+  return `<div class="card" data-i="${i}"><div class="tile">${pic(i,'ph')||icon(it[0],it[3])}<div class="badges">${b.join('')}</div></div>
   <div class="cbrand mono">${it[1]>=0?D.brands[it[1]]:esc(D.subs[it[2]])}</div><div class="cname">${esc(it[3])}</div>
   <div class="crow"><div class="cprice">${it[4]?fmt(it[4]):'Цена по запросу'}</div><button class="add" data-add="${i}" ${(!it[5]||!it[4])?'disabled':''} aria-label="В корзину">+</button></div></div>`;}
 
 /* ---------- product modal ---------- */
 function openItem(i){const it=ITEMS[i];EC('detail',[ecomP(i,1)]);
-  $('#modal').innerHTML=`<button class="x" data-close>×</button><div class="mimg${isIphone(i)?' wr':''}">${pic(i,'mph')||icon(it[0],it[3])}${isIphone(i)?'<div class="badges">'+WR+'</div>':''}</div>
+  $('#modal').innerHTML=`<button class="x" data-close>×</button><div class="mimg">${pic(i,'mph')||icon(it[0],it[3])}</div>
   <div class="mbody"><div class="mono" style="color:var(--mute)">${D.sections[it[0]]} · ${esc(D.subs[it[2]])}</div>
   <h2>${esc(it[3])}</h2>
   <div class="mprice">${it[4]?fmt(it[4]):'Цена по запросу'}</div>
   <div class="qtyrow"><button class="btn" data-add="${i}" ${(!it[5]||!it[4])?'disabled':''}>${it[5]?'В корзину':'Нет в наличии'}</button><button class="btn ghost" data-buy="${i}" ${(!it[5]||!it[4])?'disabled':''}>Купить сейчас</button></div>
-  <dl class="mmeta"><dt>Бренд</dt><dd>${it[1]>=0?D.brands[it[1]]:'—'}</dd><dt>Состояние</dt><dd>${['Новый, оригинал','Как новый (проверенный)','Уценённый'][it[6]]}</dd><dt>Наличие</dt><dd>${it[5]?'В наличии':'Нет в наличии'}</dd><dt>Доставка</dt><dd>${fmt(DELIVERY)} · ${deliveryWhen()}; самовывоз бесплатно <a href="delivery.html" style="color:var(--mute)">условия</a></dd><dt>Гарантия</dt><dd>${isIphone(i)?'24 месяца':'12 месяцев'} · возврат и обмен 14 дней <a href="warranty.html" style="color:var(--mute)">условия</a></dd></dl>
+  <dl class="mmeta"><dt>Бренд</dt><dd>${it[1]>=0?D.brands[it[1]]:'—'}</dd><dt>Состояние</dt><dd>${['Новый, оригинал','Как новый (проверенный)','Уценённый'][it[6]]}</dd><dt>Наличие</dt><dd>${it[5]?'В наличии':'Нет в наличии'}</dd><dt>Доставка</dt><dd>${fmt(DELIVERY)} · ${deliveryWhen()}; самовывоз бесплатно <a href="delivery.html" style="color:var(--mute)">условия</a></dd><dt>Гарантия</dt><dd>12 месяцев · возврат и обмен 14 дней <a href="warranty.html" style="color:var(--mute)">условия</a></dd></dl>
   <div class="pay"><div class="mono" style="color:var(--mute)">Оплата</div>
    <div class="row"><i>✓</i><div>Наличными при получении</div></div>
    <div class="row off"><i>—</i><div>Картой — временно недоступно по техническим причинам</div></div></div>

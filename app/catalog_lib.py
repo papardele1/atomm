@@ -116,6 +116,11 @@ def build(products):
     resolve_subs(goods, lambda g: g["section"], lambda g: g["name"], lambda g: g["sub"], lambda g, v: g.__setitem__("sub", v))
     for g in goods:
         g["name"] = sim_named(g["name"], g["sub"])
+    try:  # цены конкурента −100 ₽ для выбранных моделей (см. competitor.py)
+        import competitor
+        competitor.apply(goods, lambda g: g["sub"], lambda g: g["name"], lambda g, p: g.__setitem__("price", p))
+    except Exception:
+        pass
     seniority_sort(goods, lambda g: (SECTIONS.index(g["section"]), g["brand"], g["name"], g["price"]))
     brands = sorted({g["brand"] for g in goods if g["brand"]})
     subs = order_subs(g["sub"] for g in goods)  # в порядке старшинства товаров

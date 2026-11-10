@@ -757,7 +757,7 @@ def page_product(m, iid):
              ("Доставка", f"По Москве {DELIVERY_COST} ₽ — заказ до 15:00 привезём сегодня, с 17:00 до 22:00"),
              ("Самовывоз", f"Бесплатно: {PICKUP}"), ("Оплата", "Наличными при получении")]
     dl = "<dl>" + "".join(f"<dt>{e(a)}</dt><dd>{e(b)}</dd>" for a, b in rows) + "</dl>"
-    badge = '<span class="wr">2 года гарантии</span>' if feed.is_iphone(sub) else ""
+    badge = ""
     alt = ru_name(sub)
     body = [crumbs, f'<div class="pmain"><div class="big">{badge}<img src="{e(img)}" alt="{e(nm)}"></div><div>'
             f'<h1>{e(it["name"])}</h1><div class="price">{price_txt}</div>{buy}{dl}</div></div>']

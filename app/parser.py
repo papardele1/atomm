@@ -194,6 +194,11 @@ def main():
         top = next((c for c in p["cats"] if c in TOPS), "")
         products.append(dict(url=url, name=p["name"], price=p["price"], in_stock=p["in_stock"],
                              sub_name=cats.get(leaf, leaf.strip("/")), top=top))
+    try:
+        import competitor
+        competitor.collect()
+    except Exception as e:
+        log.warning("цены конкурента не собраны: %s", e)
     data = catalog_lib.build(products)
     n = len(data["items"])
     prev = 0

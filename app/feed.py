@@ -59,7 +59,7 @@ def is_iphone(sub):
 
 
 def warranty_months(sub):
-    return 24 if is_iphone(sub) else 12
+    return 12
 
 
 def short_name(name):
