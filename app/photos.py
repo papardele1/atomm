@@ -11,6 +11,8 @@
 """
 
 import argparse
+import contextlib
+import fcntl
 import hashlib
 import html
 import io
@@ -436,15 +438,42 @@ def find(name, brand_name, sec=""):
 
 # ---------------- состояние ----------------
 def load_state():
-    try:
-        with open(STATE) as f:
-            return json.load(f)
-    except (OSError, ValueError):
+    """Состояние фото. Нет файла — пусто; битый файл (пишется в этот момент) — повторяем, но НИКОГДА не считаем пустым:
+    иначе следующая запись затрёт все найденные фото (так случилось 10.11.2026)."""
+    if not os.path.exists(STATE):
         return {}
+    for i in range(10):
+        try:
+            with open(STATE) as f:
+                return json.load(f)
+        except ValueError:
+            time.sleep(0.5 + i * 0.5)
+    raise RuntimeError("keys.json не читается — запись остановлена, чтобы не потерять фото")
+
+
+@contextlib.contextmanager
+def locked():
+    """Межпроцессная блокировка keys.json (контейнер photos, задания, парсер)."""
+    os.makedirs(IMG_DIR, exist_ok=True)
+    with open(STATE + ".lock", "w") as lf:
+        fcntl.flock(lf, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(lf, fcntl.LOCK_UN)
+
+
+def update_state(fn):
+    """Прочитать-изменить-записать keys.json под блокировкой; fn(state) меняет словарь на месте."""
+    with locked():
+        cur = load_state()
+        fn(cur)
+        write_json(STATE, cur)
+        return cur
 
 
 def write_json(path, data):
-    tmp = path + ".tmp"
+    tmp = f"{path}.{os.getpid()}.tmp"
     with open(tmp, "w") as f:
         json.dump(data, f, ensure_ascii=False, separators=(",", ":"))
     os.replace(tmp, path)
@@ -525,18 +554,22 @@ def fill_from_store(limit=None):
                 raise ValueError(f"маленькое фото {im.size}")
             im, frac = trim(im)
             fn = save(im, k)
-            cur = load_state()  # фото могли добавить параллельно — перечитываем перед записью
-            cur[k] = {"f": fn, "u": m.group(1), "t": int(time.time()), "src": "store77"}
-            state = cur
+            rec = {"f": fn, "u": m.group(1), "t": int(time.time()), "src": "store77"}
+
+            def ok(cur, k=k, rec=rec):
+                if not (cur.get(k) or {}).get("f"):  # фото могли добавить параллельно (вручную) — не трогаем
+                    cur[k] = rec
+            state = update_state(ok)
             got += 1
             log.info("✓ store77 %s", name[:80])
+        except RuntimeError:
+            raise
         except Exception as e:  # noqa: BLE001
-            cur = load_state()
-            cur.setdefault(k, {})["s77_miss"] = int(time.time())
-            cur[k]["why_s77"] = str(e)[:120]
-            state = cur
+            def miss(cur, k=k, e=e):
+                cur.setdefault(k, {})["s77_miss"] = int(time.time())
+                cur[k]["why_s77"] = str(e)[:120]
+            state = update_state(miss)
             log.info("✗ store77 %s — %s", name[:70], e)
-        write_json(STATE, state)
         if n % 20 == 19:
             rebuild_index(state)
         time.sleep(0.6 + random.random() * 0.8)
@@ -547,13 +580,12 @@ def fill_from_store(limit=None):
 
 def _merge(state, changed):
     """Записать только свои изменения поверх файла: фото могли добавить параллельно (Store77, ручные)."""
-    cur = load_state()
-    for k in changed:
-        if (cur.get(k) or {}).get("f") and not state[k].get("f"):
-            continue  # кто-то уже нашёл фото — не затираем промахом
-        cur[k] = state[k]
-    write_json(STATE, cur)
-    return cur
+    def apply(cur):
+        for k in changed:
+            if (cur.get(k) or {}).get("f") and not state[k].get("f"):
+                continue  # кто-то уже нашёл фото — не затираем промахом
+            cur[k] = state[k]
+    return update_state(apply)
 
 
 def run(limit=None, sample=None):
