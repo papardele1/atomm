@@ -1,6 +1,7 @@
 """Цены конкурента для отдельных моделей.
 
-iPhone 18 Pro Max: берём цены с technolab.ru и ставим у себя на 100 ₽ дешевле (решение владельца, 10.11.2026).
+iPhone 18 Pro Max: берём цены с technolab.ru; наша цена — меньшая из двух: обычная (Store77) или technolab −100 ₽
+(решение владельца, 10.11.2026).
 Сбор — в каждом цикле парсера (раз в 4 часа); результат лежит в /www/competitor/technolab.json,
 а применяется при сборке каталога (catalog_lib.build) и сразу к текущему catalog.json (apply_to_catalog).
 """
@@ -141,8 +142,8 @@ def overrides():
     return out
 
 
-def apply(rows, sub_of, name_of, set_price):
-    """Ставит цены конкурента −100 ₽ для совпавших товаров. Возвращает число изменённых."""
+def apply(rows, sub_of, name_of, set_price, price_of=None):
+    """Цена = меньшая из двух: наша обычная или цена конкурента −100 ₽. Возвращает число совпавших товаров."""
     ov = overrides()
     if not ov:
         return 0
@@ -153,7 +154,8 @@ def apply(rows, sub_of, name_of, set_price):
             continue
         k = key_ours(name_of(r))
         if k in m:
-            set_price(r, m[k])
+            cur = price_of(r) if price_of else 0
+            set_price(r, min(cur, m[k]) if cur else m[k])  # меньшая из двух: наша обычная или конкурент −100 ₽
             n += 1
     return n
 
@@ -164,7 +166,7 @@ def apply_to_catalog(path):
         d = json.load(f)
     subs = d["subs"]
     before = {it[0]: it[5] for it in d["items"]}
-    n = apply(d["items"], lambda it: subs[it[3]], lambda it: it[4], lambda it, p: it.__setitem__(5, p))
+    n = apply(d["items"], lambda it: subs[it[3]], lambda it: it[4], lambda it, p: it.__setitem__(5, p), lambda it: it[5])
     changed = [it for it in d["items"] if before[it[0]] != it[5]]
     if changed:
         import catalog_lib
