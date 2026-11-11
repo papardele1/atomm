@@ -269,6 +269,9 @@ def health():
         con.close()
     except sqlite3.Error:
         pass
+    if SITE:
+        import indexnow
+        out["indexnow"] = indexnow.status
     return out
 
 
@@ -376,6 +379,14 @@ if SITE:
         if not m:
             return FileResponse(os.path.join(SITE, "sitemap.xml"), media_type="application/xml")
         return Response(_seo.sitemap(m), media_type="application/xml; charset=utf-8", headers=_HTML_HDR)
+
+    import indexnow as _indexnow  # сообщает Яндексу о новых/изменённых страницах (см. app/indexnow.py)
+
+    def _sitemap_for_indexnow():
+        m = _m()
+        return _seo.sitemap(m) if m else None
+
+    _indexnow.start(_sitemap_for_indexnow, os.path.join(os.path.dirname(DB), "indexnow.json"))
 
     def _redir(path, request):
         q = request.url.query
