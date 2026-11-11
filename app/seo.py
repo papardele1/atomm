@@ -252,7 +252,11 @@ def model(catalog_path, img_dir):
             for gb in mems:
                 p["mems"][mem_slug(gb)] = gb
         pages[sl] = p
-    m = {"items": items, "by_id": {it["id"]: it for it in items}, "subs": [s for s in subs if s in sub_slug],
+    # подразделы, чьи страницы есть в sitemap: подборка/раздел или модель с наличием;
+    # на пустые noindex-страницы моделей не ссылаемся (сами страницы по-прежнему отдаются)
+    live = {s for s, sl in sub_slug.items()
+            if pages[sl]["kind"] != "model" or any(it["stock"] for it in pages[sl]["items"])}
+    m = {"items": items, "by_id": {it["id"]: it for it in items}, "subs": [s for s in subs if s in sub_slug], "live": live,
          "sub_slug": sub_slug, "sub_items": sub_items, "sub_sec": sub_sec, "pages": pages,
          "secs": [s for s in secs if s in SECTION_SLUGS and SECTION_SLUGS[s] in pages],
          "date": time.strftime("%Y-%m-%d", time.localtime(max(os.path.getmtime(catalog_path), 0)))}
@@ -371,7 +375,7 @@ def footer(m):
                ("playstation", "PlayStation")]
         cols.append('<div><div class="mono">Популярное</div>' + "".join(
             f'<a href="/catalog/{s}/">{e(t)}</a>' for s, t in top if s in m["pages"]) + "</div>")
-        models = [s for s in m["subs"] if s.startswith("Apple iPhone")][:8]
+        models = [s for s in m["subs"] if s.startswith("Apple iPhone") and s in m["live"]][:8]
         cols.append('<div><div class="mono">iPhone</div>' + "".join(
             f'<a href="{sub_url(m, s)}">{e(plain(s))}</a>' for s in models) + "</div>")
         cols.append('<div><div class="mono">Разделы</div>' + "".join(
@@ -506,6 +510,8 @@ def page_hub(m):
 def models_list(m, subs):
     rows = []
     for s in subs:
+        if s not in m["live"]:
+            continue
         its = m["sub_items"][s]
         lo, _ = price_range(its)
         n = len(in_stock(its))
@@ -524,7 +530,7 @@ def page_group(m, p):
     crumbs, crumbs_ld = breadcrumbs(trail)
     subs = []
     for it in its:
-        if it["sub"] not in subs:
+        if it["sub"] not in subs and it["sub"] in m["live"]:
             subs.append(it["sub"])
     subs.sort(key=lambda s: m["subs"].index(s))
     lo, hi = price_range(its)
@@ -560,7 +566,8 @@ def variants_ctx(p):
     colors = []
     for it in its:
         mt = _COLOR_FULL.search(it["name"])
-        c = mt.group(1).strip() if mt else None
+        # «(EAC)» — не цвет: без этого цвета дублируются («черный (Black)» и «черный (Black) (EAC)»)
+        c = re.sub(r"\s*\(EAC\)$", "", mt.group(1).strip()) if mt else None
         if c and c not in colors:
             colors.append(c)
     mems = sorted({it["mem"] for it in its if it["mem"]})
@@ -703,7 +710,7 @@ def page_model(m, p, mem=None):
     fh, fld = faq_block(qa)
     body.append(fh)
     # соседние модели раздела — перелинковка
-    sibs = [s for s in m["subs"] if m["sub_sec"][s] == p["sec"] and s != sub]
+    sibs = [s for s in m["subs"] if m["sub_sec"][s] == p["sec"] and s != sub and s in m["live"]]
     if sub.startswith("Apple iPhone"):
         sibs = [s for s in sibs if s.startswith("Apple iPhone")] + [s for s in sibs if not s.startswith("Apple iPhone")]
     if sibs:
@@ -733,7 +740,7 @@ def page_product(m, iid):
     avail = it["stock"]
     # раздел в крошках — раздел подраздела (как на странице подраздела), а не раздел самого товара
     trail = [(m["sub_sec"][sub], sec_url(m["sub_sec"][sub]))] if sub in m["sub_slug"] else [(sec, sec_url(sec))]
-    if sub in m["sub_slug"]:
+    if sub in m["live"]:          # пустую noindex-страницу модели в крошки не добавляем
         trail.append((crumb_label(sub, m["sub_sec"][sub]), sub_url(m, sub)))
     trail.append((nm, None))
     crumbs, crumbs_ld = breadcrumbs(trail)
@@ -857,7 +864,7 @@ def catalog_links(m):
     """Блок ссылок на разделы и модели — вставляется в catalog.html (виден и роботу, и людям)."""
     cols = []
     for sec in m["secs"]:
-        subs = [s for s in m["subs"] if m["sub_sec"][s] == sec][:14]
+        subs = [s for s in m["subs"] if m["sub_sec"][s] == sec and s in m["live"]][:14]
         cols.append(f'<div><a class="h" href="{sec_url(sec)}">{e(sec)}</a>' + "".join(
             f'<a href="{sub_url(m, s)}">{e(display(s, sec))}</a>' for s in subs) + "</div>")
     return ('<section class="seo-links" aria-label="Разделы каталога"><style>'
