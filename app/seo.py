@@ -169,20 +169,21 @@ _FMT = __import__("string").Formatter()
 
 
 _SIM_DUAL = "Все варианты в наличии — Dual SIM: два слота для физических SIM-карт."
-_SIM_MIX = "В наличии версии с разным типом SIM — {kinds}; тип указан в названии каждого товара."
-_SIM_LABEL = {"esim": "только eSIM", "nano": "Nano SIM + eSIM", "dual": "Dual SIM на две физические карты"}
+_SIM_MIX = "В наличии версии с разным типом SIM: {kinds}; тип указан в названии каждого товара."
+_SIM_LABEL = {"esim": "только с eSIM", "nano": "с Nano SIM + eSIM", "dual": "с двумя физическими SIM (Dual SIM)"}
 
 
 def sim_kind(name):
     """Тип SIM по названию товара. В каталоге Store77 у iPhone помечены только «eSim» (без лотка)
-    и «Dual sim» (две физические SIM); iPhone без пометки — версия Nano SIM + eSIM."""
+    и «Dual sim» (две физические SIM); iPhone без пометки (кроме Air) — версия Nano SIM + eSIM,
+    как в catalog_lib.sim_named (свежий каталог парсера уже содержит эту пометку в названии)."""
     if re.search(r"nano", name, re.I):
         return "nano"
     if re.search(r"esim", name, re.I):
         return "esim"
     if re.search(r"dual\s*sim", name, re.I):
         return "dual"
-    if re.match(r"Телефон Apple iPhone\b", name):
+    if re.match(r"Телефон Apple iPhone\b", name) and not re.search(r"\bAir\b", name):
         return "nano"
     return None
 
