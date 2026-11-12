@@ -168,12 +168,42 @@ _SIM_NANO = "Все варианты в наличии — с Nano SIM + eSIM: �
 _FMT = __import__("string").Formatter()
 
 
+_SIM_DUAL = "Все варианты в наличии — Dual SIM: два слота для физических SIM-карт."
+_SIM_MIX = "В наличии версии с разным типом SIM: {kinds}; тип указан в названии каждого товара."
+_SIM_LABEL = {"esim": "только с eSIM", "nano": "с Nano SIM + eSIM", "dual": "с двумя физическими SIM (Dual SIM)"}
+
+
 def sim_kind(name):
+    """Тип SIM по названию товара. В каталоге Store77 у iPhone помечены только «eSim» (без лотка)
+    и «Dual sim» (две физические SIM); iPhone без пометки (кроме Air) — версия Nano SIM + eSIM,
+    как в catalog_lib.sim_named (свежий каталог парсера уже содержит эту пометку в названии)."""
     if re.search(r"nano", name, re.I):
         return "nano"
     if re.search(r"esim", name, re.I):
         return "esim"
+    if re.search(r"dual\s*sim", name, re.I):
+        return "dual"
+    if re.match(r"Телефон Apple iPhone\b", name) and not re.search(r"\bAir\b", name):
+        return "nano"
     return None
+
+
+def sim_texts(sims):
+    """(предложение о типах SIM, прямой ответ «есть ли физическая SIM») по множеству типов в наличии."""
+    if not sims:
+        return "", ""
+    if sims == {"esim"}:
+        return _SIM_ESIM, "Нет, в наличии только версии с eSIM — без лотка для физической SIM-карты."
+    if sims == {"nano"}:
+        return _SIM_NANO, "Да, все варианты в наличии — с Nano SIM + eSIM: можно вставить обычную SIM-карту."
+    if sims == {"dual"}:
+        return _SIM_DUAL, "Да, все варианты в наличии — Dual SIM: можно вставить две обычные SIM-карты."
+    if sims == {"nano", "esim"}:
+        return _SIM_BOTH, ("Да, есть: в наличии версии с Nano SIM + eSIM и только с eSIM — тип SIM указан "
+                           "в названии каждого товара.")
+    kinds = join_ru(_SIM_LABEL[k] for k in ("nano", "dual", "esim") if k in sims)
+    return _SIM_MIX.format(kinds=kinds), (f"Да, есть: в наличии версии {kinds} — тип SIM указан в названии каждого товара."
+                                          if sims & {"nano", "dual"} else "")
 
 
 def join_ru(xs):
@@ -572,13 +602,9 @@ def variants_ctx(p):
             colors.append(c)
     mems = sorted({it["mem"] for it in its if it["mem"]})
     sims = {sim_kind(it["name"]) for it in its} - {None}
-    sim = _SIM_BOTH if {"nano", "esim"} <= sims else _SIM_ESIM if sims == {"esim"} else _SIM_NANO if sims == {"nano"} else ""
+    sim, sim_answer = sim_texts(sims)
     lo, _ = price_range(p["items"])
     links = ", ".join(f'<a href="/catalog/{p["slug"]}/{ms}/">{mem_label(gb)}</a>' for ms, gb in p["mems"].items())
-    sim_answer = ("Да, есть: в наличии версии с Nano SIM + eSIM и только с eSIM — тип SIM указан в названии каждого товара."
-                  if {"nano", "esim"} <= sims else
-                  "Да, все варианты в наличии — с Nano SIM + eSIM: можно вставить обычную SIM-карту." if sims == {"nano"} else
-                  "Нет, в наличии только версии с eSIM — без лотка для физической SIM-карты." if sims == {"esim"} else "")
     return {"colors": join_ru(colors), "mems": join_ru(mem_label(x) for x in mems), "sim": sim, "sim_answer": sim_answer,
             "lo": f"от {rub(lo)}" if lo else "", "mem_links": (links, "")}
 
@@ -590,8 +616,9 @@ def text_ctx(m, p):
         if pg["kind"] == "model" and in_stock(pg["items"]):
             nm = display(pg["sub"], pg["sec"])
             ctx["link_" + sl.replace("-", "_")] = (f'<a href="/catalog/{sl}/">{e(nm)}</a>', nm)
-    gt = seo_content.GUIDES["iphone-18-pro-vs-18-pro-max"]["title"]
-    ctx["guide"] = (f'<a href="{seo_content.GUIDE_18PRO}">«{e(gt)}»</a>', f"«{gt}»")
+    for key, url in (("guide", seo_content.GUIDE_18PRO), ("guide_17_18", seo_content.GUIDE_17_18)):
+        gt = seo_content.GUIDES[url.strip("/").split("/")[-1]]["title"]
+        ctx[key] = (f'<a href="{url}">«{e(gt)}»</a>', f"«{gt}»")
     return ctx
 
 
@@ -810,14 +837,17 @@ def page_guide(m, slug):
     url = guide_url(slug)
     models = [m["pages"].get(s) for s in g["models"]]
     models = [pg if pg and pg["kind"] == "model" else None for pg in models]
-    ctx = {"lo_pro": "нет в наличии", "lo_max": "нет в наличии", "colors_sentence": ""}
+    ctx = {"colors_sentence": ""}
     links = []
-    for key, pg in zip(("pro", "max"), models):
+    for n, pg in enumerate(models, 1):
+        ctx[f"lo_{n}"], ctx[f"colors_{n}"] = "нет в наличии", "—"
         if not pg:
             continue
         v = variants_ctx(pg)
         if v["lo"]:
-            ctx[f"lo_{key}"] = v["lo"]
+            ctx[f"lo_{n}"] = v["lo"]
+        if v["colors"]:
+            ctx[f"colors_{n}"] = v["colors"]
         if v["colors"] and not ctx["colors_sentence"]:
             ctx["colors_sentence"] = f" В ATOMM сейчас есть: {v['colors']}."
         if in_stock(pg["items"]):
