@@ -565,7 +565,7 @@ def page_group(m, p):
     subs.sort(key=lambda s: m["subs"].index(s))
     lo, hi = price_range(its)
     n = len(in_stock(its))
-    wm = 24 if p["slug"] == "iphone" else 12
+    wm = feed.warranty_months(name)   # было 24 мес. для iPhone — расходилось с warranty.html (12 мес. на всё)
     ru = p.get("ru") or SECTION_ACC.get(name) or lower_first(name)
     acc = ({"dyson": "технику Dyson"}.get(p["slug"]) or lower_first(name)) if p["kind"] == "collection" \
         else SECTION_ACC.get(name, lower_first(name))
@@ -577,6 +577,9 @@ def page_group(m, p):
     if len(subs) > 1:
         body.append(f"<h2>Модели</h2>{models_list(m, subs)}")
     body.append(f"<h2>Товары</h2>{grid(its, '/catalog.html')}")
+    ct = collection_text(m, p) if p["kind"] == "collection" else ""
+    if ct:
+        body.append(ct)
     qa = common_faq(ru, its, wm)
     fh, fld = faq_block(qa)
     body.append(fh)
@@ -609,17 +612,35 @@ def variants_ctx(p):
             "lo": f"от {rub(lo)}" if lo else "", "mem_links": (links, "")}
 
 
-def text_ctx(m, p):
-    """Плейсхолдеры: значения — строка (экранируется) или пара (html, text) для доверенного HTML."""
-    ctx = variants_ctx(p)
+def links_ctx(m):
+    """{link_<slug>} — ссылки на живые страницы моделей (с наличием), {guide…} — на статьи."""
+    ctx = {}
     for sl, pg in m["pages"].items():
         if pg["kind"] == "model" and in_stock(pg["items"]):
             nm = display(pg["sub"], pg["sec"])
             ctx["link_" + sl.replace("-", "_")] = (f'<a href="/catalog/{sl}/">{e(nm)}</a>', nm)
-    for key, url in (("guide", seo_content.GUIDE_18PRO), ("guide_17_18", seo_content.GUIDE_17_18)):
+    for key, url in (("guide", seo_content.GUIDE_18PRO), ("guide_17_18", seo_content.GUIDE_17_18),
+                     ("guide_which", seo_content.GUIDE_WHICH)):
         gt = seo_content.GUIDES[url.strip("/").split("/")[-1]]["title"]
         ctx[key] = (f'<a href="{url}">«{e(gt)}»</a>', f"«{gt}»")
     return ctx
+
+
+def text_ctx(m, p):
+    """Плейсхолдеры: значения — строка (экранируется) или пара (html, text) для доверенного HTML."""
+    ctx = variants_ctx(p)
+    ctx.update(links_ctx(m))
+    return ctx
+
+
+def collection_text(m, p):
+    """HTML-блок с H2 для подборки из seo_content.COLLECTION_TEXTS или ""."""
+    c = seo_content.COLLECTION_TEXTS.get(p["slug"])
+    if not c:
+        return ""
+    ctx = links_ctx(m)
+    paras = "".join(f"<p>{h}</p>" for h in (frags(t, ctx, True)[1] for t in c["paras"]) if h)
+    return f'<h2>{e(c["h2"])}</h2><div class="lead seo-text">{paras}</div>' if paras else ""
 
 
 def _frag(t, ctx, as_html):
@@ -821,8 +842,18 @@ def render(m, slug, sub=None):
     return page_group(m, p)
 
 
+class _GuideCtx(dict):
+    """{link_<slug>} модели без страницы/наличия — просто название без ссылки ('apple_iphone_16_plus' -> 'iPhone 16 Plus')."""
+    def __missing__(self, k):
+        if not k.startswith("link_"):
+            raise KeyError(k)
+        w = k[5:].split("_")
+        w = w[1:] if w[0] == "apple" else w
+        return " ".join({"iphone": "iPhone", "ipad": "iPad"}.get(x, x if x[:1].isdigit() else x.capitalize()) for x in w)
+
+
 def _fill(tpl, ctx, escape):
-    return tpl.format_map({k: (e(v) if escape else v) for k, v in ctx.items()})
+    return tpl.format_map(_GuideCtx({k: (v[0] if isinstance(v, tuple) else e(v) if escape else v) for k, v in ctx.items()}))
 
 
 def guide_url(slug):
@@ -838,6 +869,11 @@ def page_guide(m, slug):
     models = [m["pages"].get(s) for s in g["models"]]
     models = [pg if pg and pg["kind"] == "model" else None for pg in models]
     ctx = {"colors_sentence": ""}
+    lctx = {k: v for k, v in links_ctx(m).items() if k.startswith("link_")}
+    ctx.update(lctx)
+    for key, (lead, slugs, tail) in g.get("more_models", {}).items():
+        av = [lctx["link_" + sl.replace("-", "_")][0] for sl in slugs if "link_" + sl.replace("-", "_") in lctx]
+        ctx[key] = (f"<p>{e(lead)} {join_ru(av)}{e(tail)}</p>" if av else "", "")
     links = []
     for n, pg in enumerate(models, 1):
         ctx[f"lo_{n}"], ctx[f"colors_{n}"] = "нет в наличии", "—"
@@ -863,7 +899,7 @@ def page_guide(m, slug):
     body = [crumbs, f"<h1>{e(g['title'])}</h1>", '<article class="article">',
             f'<p class="meta">Обновлено {d[8:10]}.{d[5:7]}.{d[:4]} · ATOMM</p>', body_html,
             f'<div class="src">Характеристики — по данным Apple и обзоров:<ul>{src}</ul></div></article>']
-    for pg in models:
+    for pg in (models if g.get("grids", True) else []):
         if pg and in_stock(pg["items"]):
             body.append(f"<h2>{e(display(pg['sub'], pg['sec']))} в наличии</h2>"
                         + grid(sorted(in_stock(pg["items"]), key=lambda it: it["price"])[:8]))

@@ -262,6 +262,7 @@ def seniority_sort(rows, get):
 
 
 _TIER_NEXT = re.compile(r"\s*(pro|max|plus|air|mini|ultra|fe|lite|neo|e\b|\+)", re.I)
+_IPHONE_MODEL = re.compile(r"(?:телефон|смартфон)\s+(Apple iPhone \d+e?(?: Pro Max| Pro| Plus)?)(?![\w+])", re.I)
 
 
 def resolve_subs(rows, sec_of, name_of, sub_of, set_sub):
@@ -294,6 +295,11 @@ def resolve_subs(rows, sec_of, name_of, sub_of, set_sub):
                 continue
             if not best or len(sub) > len(best):
                 best = sub
+        if not best:
+            # у iPhone прошлых поколений (16, 16 Plus, 15…) в Store77 нет своего подраздела — заводим его по названию,
+            # чтобы у модели была своя страница и фильтр, а не общий «Телефоны»
+            m = _IPHONE_MODEL.match(name_of(r))
+            best = m.group(1) if m else None
         if best:
             set_sub(r, best)
             moved += 1
