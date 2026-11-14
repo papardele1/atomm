@@ -592,6 +592,22 @@ def page_group(m, p):
                   crumbs_ld + fld)
 
 
+# цвет без «цвет:» в названии: iPad — «… Wi-Fi (Серый космос)», Mac — «… SSD) Черный космос (MDE14)»
+_COLOR_TAIL = (re.compile(r"\(([А-ЯЁ][а-яё]+(?:[ -][а-яё]+)*)\)$"),
+               re.compile(r"\)\s+([А-ЯЁ][а-яё]+(?:[ -][а-яё]+)*)\s+\([A-Z0-9/]{4,24}\)$"))
+
+
+def _color_fallback(name):
+    if not re.match(r"(Планшет|Ноутбук) Apple", name):
+        return None
+    name = re.sub(r"\s*\d+\s+(?:год|года|лет)\s+гарантии$", "", name.strip())   # «… (MU9E3) 2 года гарантии»
+    for rx in _COLOR_TAIL:
+        mt = rx.search(name)
+        if mt:
+            return lower_first(mt.group(1))
+    return None
+
+
 def variants_ctx(p):
     """Данные каталога для текстов seo_content — только по товарам в наличии. Нет наличия/данных — пустые строки
     (фрагменты текста с пустыми плейсхолдерами не выводятся)."""
@@ -600,7 +616,7 @@ def variants_ctx(p):
     for it in its:
         mt = _COLOR_FULL.search(it["name"])
         # «(EAC)» — не цвет: без этого цвета дублируются («черный (Black)» и «черный (Black) (EAC)»)
-        c = re.sub(r"\s*\(EAC\)$", "", mt.group(1).strip()) if mt else None
+        c = re.sub(r"\s*\(EAC\)$", "", mt.group(1).strip()) if mt else _color_fallback(it["name"])
         if c and c not in colors:
             colors.append(c)
     mems = sorted({it["mem"] for it in its if it["mem"]})
@@ -620,7 +636,7 @@ def links_ctx(m):
             nm = display(pg["sub"], pg["sec"])
             ctx["link_" + sl.replace("-", "_")] = (f'<a href="/catalog/{sl}/">{e(nm)}</a>', nm)
     for key, url in (("guide", seo_content.GUIDE_18PRO), ("guide_17_18", seo_content.GUIDE_17_18),
-                     ("guide_which", seo_content.GUIDE_WHICH)):
+                     ("guide_which", seo_content.GUIDE_WHICH), ("guide_sim", seo_content.GUIDE_SIM)):
         gt = seo_content.GUIDES[url.strip("/").split("/")[-1]]["title"]
         ctx[key] = (f'<a href="{url}">«{e(gt)}»</a>', f"«{gt}»")
     return ctx
