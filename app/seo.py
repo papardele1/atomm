@@ -636,9 +636,77 @@ def links_ctx(m):
             nm = display(pg["sub"], pg["sec"])
             ctx["link_" + sl.replace("-", "_")] = (f'<a href="/catalog/{sl}/">{e(nm)}</a>', nm)
     for key, url in (("guide", seo_content.GUIDE_18PRO), ("guide_17_18", seo_content.GUIDE_17_18),
-                     ("guide_which", seo_content.GUIDE_WHICH), ("guide_sim", seo_content.GUIDE_SIM)):
-        gt = seo_content.GUIDES[url.strip("/").split("/")[-1]]["title"]
+                     ("guide_which", seo_content.GUIDE_WHICH), ("guide_sim", seo_content.GUIDE_SIM),
+                     ("guide_mem", seo_content.GUIDE_MEM)):
+        gt = guide_title(m, url.strip("/").split("/")[-1])
         ctx[key] = (f'<a href="{url}">«{e(gt)}»</a>', f"«{gt}»")
+    return ctx
+
+
+def _mem_stock(m, g):
+    """Для статей с "mem_guide": (страница модели, {gb: товары в наличии}) — только объёмы, которые есть в наличии."""
+    mg = g.get("mem_guide")
+    pg = m["pages"].get(mg["model"]) if mg else None
+    if not pg or pg["kind"] != "model":
+        return None, {}
+    by = {}
+    for it in in_stock(pg["items"]):
+        if it["mem"]:
+            by.setdefault(it["mem"], []).append(it)
+    return pg, dict(sorted(by.items()))
+
+
+def guide_title(m, slug, short=False):
+    """Заголовок статьи. У статей про память — хвост по объёмам в наличии, только если их ≥2:
+    полный («: 256 ГБ, 512 ГБ или 1 ТБ») для H1, короткий («: от 256 ГБ до 2 ТБ», short=True) для <title>."""
+    g = seo_content.GUIDES[slug]
+    _, by = _mem_stock(m, g)
+    if len(by) < 2:
+        return g["title"]
+    labels = [mem_label(gb) for gb in by]
+    mg = g["mem_guide"]
+    if short:
+        return g["title"] + mg["seo_tail"].format(lo=labels[0], hi=labels[-1])
+    return g["title"] + mg["title_tail"].format(choice=", ".join(labels[:-1]) + " или " + labels[-1])
+
+
+def mem_guide_ctx(m, g):
+    """Плейсхолдеры статьи про память: {mem_intro}, {mem_table}, {mem_sections}, {mem_summary}.
+    Разделы и строки — только для объёмов в наличии (цена «от» и ссылка на страницу памяти — из каталога);
+    для объёма без наличия выводится его текст "absent", если он задан."""
+    mg = g["mem_guide"]
+    pg, by = _mem_stock(m, g)
+    ctx = {"mem_intro": "", "mem_table": ("", ""), "mem_sections": ("", ""), "mem_summary": ("", ""),
+           "mem_neighbors": ""}
+    if not pg:
+        return ctx
+    rows, secs, summ = [], [], []
+    for gb in sorted(set(mg["sections"]) | set(by)):
+        if gb not in by:
+            if gb in mg.get("absent", {}):
+                secs.append(mg["absent"][gb])
+            continue
+        lo, _ = price_range(by[gb])
+        ms = mem_slug(gb)
+        label = f"{display(pg['sub'], pg['sec'])} {mem_label(gb)}"
+        link = (f'<a href="/catalog/{pg["slug"]}/{ms}/">{e(label)}</a>' if ms in pg["mems"]
+                else f'<a href="/catalog/{pg["slug"]}/">{e(label)}</a>')
+        c = {"lo": f"от {rub(lo)}", "mem": (link, label), "n": str(len(by[gb]))}
+        rows.append(f"<tr><td>{e(mem_label(gb))}</td><td>от {rub(lo)}</td><td>{link}</td></tr>")
+        if gb in mg["sections"]:
+            secs.append(_fill(mg["sections"][gb], c, True))
+        if gb in mg.get("summary", {}):
+            summ.append(f"<li>{_fill(mg['summary'][gb], c, True)}</li>")
+    if not rows:
+        return ctx
+    if set(by) != set(mg.get("all_mems", ())):       # весь набор в наличии — не повторяем список из вводной фразы
+        ctx["mem_intro"] = mg["intro"].format(mems=join_ru(mem_label(gb) for gb in by))
+    if len(by) >= 2:
+        ctx["mem_neighbors"] = mg.get("neighbors", "")
+    ctx["mem_table"] = (f'<h2>{e(mg["table_h2"])}</h2><table class="cmp"><tr><th>Память</th><th>Цена в ATOMM</th>'
+                        f'<th>Все варианты</th></tr>{"".join(rows)}</table>', "")
+    ctx["mem_sections"] = ("\n".join(secs), "")
+    ctx["mem_summary"] = (f"<ul>{''.join(summ)}</ul>" if summ else "", "")
     return ctx
 
 
@@ -887,6 +955,9 @@ def page_guide(m, slug):
     ctx = {"colors_sentence": ""}
     lctx = {k: v for k, v in links_ctx(m).items() if k.startswith("link_")}
     ctx.update(lctx)
+    if g.get("mem_guide"):
+        ctx.update(mem_guide_ctx(m, g))
+    title = guide_title(m, slug)
     for key, (lead, slugs, tail) in g.get("more_models", {}).items():
         av = [lctx["link_" + sl.replace("-", "_")][0] for sl in slugs if "link_" + sl.replace("-", "_") in lctx]
         ctx[key] = (f"<p>{e(lead)} {join_ru(av)}{e(tail)}</p>" if av else "", "")
@@ -909,17 +980,17 @@ def page_guide(m, slug):
     body_html = _fill(g["body"], ctx, True)
     if links:
         body_html += "<h2>Где посмотреть варианты</h2>" + "".join(links)
-    crumbs, crumbs_ld = breadcrumbs([("iPhone", "/catalog/iphone/"), (g["title"], None)])
+    crumbs, crumbs_ld = breadcrumbs([("iPhone", "/catalog/iphone/"), (title, None)])
     src = "".join(f'<li><a href="{e(u)}" rel="nofollow noopener" target="_blank">{e(u)}</a></li>' for u in g["sources"])
     d = g["modified"]
-    body = [crumbs, f"<h1>{e(g['title'])}</h1>", '<article class="article">',
+    body = [crumbs, f"<h1>{e(title)}</h1>", '<article class="article">',
             f'<p class="meta">Обновлено {d[8:10]}.{d[5:7]}.{d[:4]} · ATOMM</p>', body_html,
             f'<div class="src">Характеристики — по данным Apple и обзоров:<ul>{src}</ul></div></article>']
     for pg in (models if g.get("grids", True) else []):
         if pg and in_stock(pg["items"]):
             body.append(f"<h2>{e(display(pg['sub'], pg['sec']))} в наличии</h2>"
                         + grid(sorted(in_stock(pg["items"]), key=lambda it: it["price"])[:8]))
-    ld = {"@context": "https://schema.org", "@type": "Article", "headline": g["title"], "description": g["desc"],
+    ld = {"@context": "https://schema.org", "@type": "Article", "headline": title, "description": g["desc"],
           "inLanguage": "ru", "datePublished": g["published"], "dateModified": g["modified"],
           "mainEntityOfPage": BASE + url, "url": BASE + url,
           "author": {"@type": "Organization", "name": "ATOMM", "url": BASE + "/"},
@@ -929,7 +1000,7 @@ def page_guide(m, slug):
     img = next((it["img"] for pg in models if pg for it in in_stock(pg["items"]) if it["img"]), None)
     if img:
         ld["image"] = f"{BASE}/img/{img}"
-    return layout(g["seo_title"], g["desc"], url, "\n".join(body), m, crumbs_ld + _ld(ld),
+    return layout(g["seo_title"].format(title=guide_title(m, slug, short=True)), g["desc"], url, "\n".join(body), m, crumbs_ld + _ld(ld),
                   og_image=f"{BASE}/img/{img}" if img else None)
 
 
