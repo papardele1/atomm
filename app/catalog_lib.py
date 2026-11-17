@@ -261,20 +261,38 @@ def seniority_sort(rows, get):
     return rows
 
 
-_TIER_NEXT = re.compile(r"\s*(pro|max|plus|air|mini|ultra|fe|lite|neo|e\b|\+)", re.I)
+_TIER_NEXT = re.compile(r"\s*(pro|max|plus|air|mini|ultra|fe|lite|neo|edge|e\b|\+)", re.I)
 _IPHONE_MODEL = re.compile(r"(?:телефон|смартфон)\s+(Apple iPhone \d+e?(?: Pro Max| Pro| Plus)?)(?![\w+])", re.I)
+# Модели, у которых в Store77 нет своего подраздела (лежат в «Телефоны Samsung», «Наушники Apple»): подраздел
+# заводим по названию, только если в нём набирается ≥ NEW_SUB_MIN товаров (с наличием и без — чтобы страница
+# не появлялась и не пропадала из sitemap от остатков). S26 / S26+ / S26 FE / S26 Ultra, A07 / A07s — разные модели:
+# «+», «s» и линейка входят в название подраздела. Apple Watch SE — только SE 2: в каталоге есть «SE 3» и «SE 3 (2026)»,
+# и без подтверждения, что это одно поколение, их не объединяем.
+_NAME_MODELS = [
+    re.compile(r"(?:телефон|смартфон)\s+(Samsung Galaxy (?:Z (?:Fold|Flip)\d+(?: FE| Ultra)?|[SAM]\d+s?(?: Ultra| FE| Edge|\+)?))(?![\w+])", re.I),
+    re.compile(r"(?:беспроводные\s+)?наушники\s+Apple\s+(AirPods(?: Pro| Max)? \d+)(?![\w+])", re.I),
+    re.compile(r"(?:умные\s+)?часы\s+(Apple Watch SE 2)(?![\w+.])", re.I),
+]
+NEW_SUB_MIN = 3
+# общие подразделы с брендом («Телефоны Samsung», «Часы Apple Watch»): только устройства — тип в начале, без цифр
+# и без «для …»; аксессуарные («Аксессуары для MacBook», «Чехлы для iPhone», «Зарядные устройства Apple») не трогаем
+_BRAND_GENERIC = re.compile(r"(?:Телефоны|Смартфоны|Планшеты|Ноутбуки|Часы|Умные часы|Наушники|Моноблоки)\s(?!.*\bдля\b)[^\d]*$")
 
 
 def resolve_subs(rows, sec_of, name_of, sub_of, set_sub):
     """Товары из общего подраздела («Телефоны») переносит в подраздел своей модели того же раздела,
     если его название целиком входит в название товара («Apple iPhone 18 Pro Max 2 ТБ…» → «Apple iPhone 18 Pro Max»).
-    Берётся самое длинное совпадение; «Apple iPhone 18» не подходит к «… 18 Pro …»."""
+    Берётся самое длинное совпадение; «Apple iPhone 18» не подходит к «… 18 Pro …».
+    Так же разбираются общие подразделы с брендом («Телефоны Samsung», «Наушники Apple», «Часы Apple Watch»).
+    Моделям без подраздела (_NAME_MODELS: Galaxy S26, AirPods 4 …) он заводится по названию, если в нём
+    ≥ NEW_SUB_MIN товаров."""
     specific = {}
     for r in rows:
         sub = sub_of(r)
         if re.search(r"[A-Za-z]", sub) and re.search(r"\d", sub):  # подраздел конкретной модели (с номером)
             specific.setdefault(sec_of(r), set()).add(sub)
     moved = 0
+    pending = {}
     for r in rows:
         if sub_of(r) == "Apple iPhone":  # общий подраздел Store77 → подраздел модели (iPhone Duo и т. п.)
             m = re.match(r"(?:телефон|смартфон)\s+(Apple iPhone (?:[A-Za-z]+|\d+\w*)(?: Pro Max| Pro| Plus)?)\b", name_of(r), re.I)
@@ -282,7 +300,7 @@ def resolve_subs(rows, sec_of, name_of, sub_of, set_sub):
                 set_sub(r, m.group(1))
                 moved += 1
             continue
-        if re.search(r"[A-Za-z0-9]", sub_of(r)):
+        if re.search(r"[A-Za-z0-9]", sub_of(r)) and not _BRAND_GENERIC.match(sub_of(r)):
             continue
         name = name_of(r).lower()
         best = None
@@ -300,9 +318,19 @@ def resolve_subs(rows, sec_of, name_of, sub_of, set_sub):
             # чтобы у модели была своя страница и фильтр, а не общий «Телефоны»
             m = _IPHONE_MODEL.match(name_of(r))
             best = m.group(1) if m else None
+            if not best:
+                m = next((mm for mm in (rx.match(name_of(r)) for rx in _NAME_MODELS) if mm), None)
+                if m:
+                    pending.setdefault((sec_of(r), m.group(1)), []).append(r)
+                    continue
         if best:
             set_sub(r, best)
             moved += 1
+    for (_, sub), rs in pending.items():
+        if len(rs) >= NEW_SUB_MIN:
+            for r in rs:
+                set_sub(r, sub)
+            moved += len(rs)
     moved += _resolve_by_core(rows, sec_of, name_of, sub_of, set_sub)
     return moved
 
@@ -317,7 +345,7 @@ def model_core(name):
     m = _SPEC_CUT.search(n)
     if m:
         n = n[:m.start()]
-    return tuple(re.sub(r"[^\w.]+", " ", n.lower()).split())
+    return tuple(re.sub(r"[^\w.]+", " ", n.lower().replace("+", " plus ")).split())   # S26+ ≠ S26
 
 
 def _resolve_by_core(rows, sec_of, name_of, sub_of, set_sub):

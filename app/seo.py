@@ -211,9 +211,19 @@ def join_ru(xs):
     return ", ".join(xs[:-1]) + " и " + xs[-1] if len(xs) > 1 else (xs[0] if xs else "")
 
 
+_LAT2CYR = str.maketrans("aceopxyACEOPXYKMHTB", "асеорхуАСЕОРХУКМНТВ")
+
+
+def cyr_fix(s):
+    """Латинские буквы-двойники в русских словах → кириллица («cиний» с латинской c → «синий»).
+    Слова без кириллицы («Blue») не трогаем."""
+    return re.sub(r"\w+", lambda w: w.group(0).translate(_LAT2CYR) if re.search(r"[а-яё]", w.group(0), re.I)
+                  else w.group(0), s)
+
+
 def color_of(name):
     m = _COLOR.search(name)
-    return m.group(1).strip().lower() if m else None
+    return cyr_fix(m.group(1).strip()).lower() if m else None
 
 
 # ---------------------------------------------------------------- модель данных
@@ -612,12 +622,14 @@ def variants_ctx(p):
     """Данные каталога для текстов seo_content — только по товарам в наличии. Нет наличия/данных — пустые строки
     (фрагменты текста с пустыми плейсхолдерами не выводятся)."""
     its = in_stock(p["items"])
-    colors = []
+    colors, seen = [], set()
     for it in its:
         mt = _COLOR_FULL.search(it["name"])
         # «(EAC)» — не цвет: без этого цвета дублируются («черный (Black)» и «черный (Black) (EAC)»)
         c = re.sub(r"\s*\(EAC\)$", "", mt.group(1).strip()) if mt else _color_fallback(it["name"])
-        if c and c not in colors:
+        c = cyr_fix(c) if c else c      # «cиний (Blue)» с латинской c — тот же цвет, что «синий (Blue)»
+        if c and c.lower() not in seen:
+            seen.add(c.lower())
             colors.append(c)
     mems = sorted({it["mem"] for it in its if it["mem"]})
     sims = {sim_kind(it["name"]) for it in its} - {None}
@@ -625,7 +637,13 @@ def variants_ctx(p):
     lo, _ = price_range(p["items"])
     links = ", ".join(f'<a href="/catalog/{p["slug"]}/{ms}/">{mem_label(gb)}</a>' for ms, gb in p["mems"].items())
     return {"colors": join_ru(colors), "mems": join_ru(mem_label(x) for x in mems), "sim": sim, "sim_answer": sim_answer,
-            "lo": f"от {rub(lo)}" if lo else "", "mem_links": (links, "")}
+            "lo": f"от {rub(lo)}" if lo else "", "mem_links": (links, ""),
+            "mem_partial": bool(links) and len(p["mems"]) < len(mems)}
+
+
+# «Страницы по объёму: {mem_links}.» — если страниц меньше, чем объёмов в наличии, подпись меняется на «Отдельные страницы:»,
+# чтобы список из двух ссылок не читался как полный перечень объёмов
+_MEM_LINKS_FRAG = re.compile(r"^[^{}]+:\s*\{mem_links\}\.$")
 
 
 def links_ctx(m):
@@ -637,7 +655,7 @@ def links_ctx(m):
             ctx["link_" + sl.replace("-", "_")] = (f'<a href="/catalog/{sl}/">{e(nm)}</a>', nm)
     for key, url in (("guide", seo_content.GUIDE_18PRO), ("guide_17_18", seo_content.GUIDE_17_18),
                      ("guide_which", seo_content.GUIDE_WHICH), ("guide_sim", seo_content.GUIDE_SIM),
-                     ("guide_mem", seo_content.GUIDE_MEM)):
+                     ("guide_mem", seo_content.GUIDE_MEM), ("guide_mem_pro", seo_content.GUIDE_MEM_PRO)):
         gt = guide_title(m, url.strip("/").split("/")[-1])
         ctx[key] = (f'<a href="{url}">«{e(gt)}»</a>', f"«{gt}»")
     return ctx
@@ -689,9 +707,11 @@ def mem_guide_ctx(m, g):
         lo, _ = price_range(by[gb])
         ms = mem_slug(gb)
         label = f"{display(pg['sub'], pg['sec'])} {mem_label(gb)}"
-        link = (f'<a href="/catalog/{pg["slug"]}/{ms}/">{e(label)}</a>' if ms in pg["mems"]
-                else f'<a href="/catalog/{pg["slug"]}/">{e(label)}</a>')
-        c = {"lo": f"от {rub(lo)}", "mem": (link, label), "n": str(len(by[gb]))}
+        href = f"/catalog/{pg['slug']}/{ms}/" if ms in pg["mems"] else f"/catalog/{pg['slug']}/"
+        link = f'<a href="{href}">{e(label)}</a>'
+        # "short_anchor": в разделах статьи анкор — только объём («512 ГБ»), без повторов названия модели
+        sl = mem_label(gb) if mg.get("short_anchor") else label
+        c = {"lo": f"от {rub(lo)}", "mem": (f'<a href="{href}">{e(sl)}</a>', sl), "n": str(len(by[gb]))}
         rows.append(f"<tr><td>{e(mem_label(gb))}</td><td>от {rub(lo)}</td><td>{link}</td></tr>")
         if gb in mg["sections"]:
             secs.append(_fill(mg["sections"][gb], c, True))
@@ -755,7 +775,8 @@ def model_text(m, p):
     if not c:
         return "", []
     ctx = text_ctx(m, p)
-    paras = "".join(f"<p>{h}</p>" for h in (frags(t, ctx, True)[1] for t in c["paras"]) if h)
+    fix = (lambda t: "Отдельные страницы: {mem_links}." if _MEM_LINKS_FRAG.match(t) else t) if ctx.get("mem_partial") else None
+    paras = "".join(f"<p>{h}</p>" for h in (frags([fix(x) for x in t] if fix else t, ctx, True)[1] for t in c["paras"]) if h)
     qa = []
     for q, parts in c.get("faq", []):
         ok, txt = frags(parts, ctx, False)
