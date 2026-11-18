@@ -628,6 +628,7 @@ def variants_ctx(p):
         # «(EAC)» — не цвет: без этого цвета дублируются («черный (Black)» и «черный (Black) (EAC)»)
         c = re.sub(r"\s*\(EAC\)$", "", mt.group(1).strip()) if mt else _color_fallback(it["name"])
         c = cyr_fix(c) if c else c      # «cиний (Blue)» с латинской c — тот же цвет, что «синий (Blue)»
+        c = re.sub(r"(?<=\S)\(", " (", c) if c else c    # «бежевый(Sand)» — тот же цвет, что «бежевый (Sand)»
         if c and c.lower() not in seen:
             seen.add(c.lower())
             colors.append(c)
@@ -655,7 +656,8 @@ def links_ctx(m):
             ctx["link_" + sl.replace("-", "_")] = (f'<a href="/catalog/{sl}/">{e(nm)}</a>', nm)
     for key, url in (("guide", seo_content.GUIDE_18PRO), ("guide_17_18", seo_content.GUIDE_17_18),
                      ("guide_which", seo_content.GUIDE_WHICH), ("guide_sim", seo_content.GUIDE_SIM),
-                     ("guide_mem", seo_content.GUIDE_MEM), ("guide_mem_pro", seo_content.GUIDE_MEM_PRO)):
+                     ("guide_mem", seo_content.GUIDE_MEM), ("guide_mem_pro", seo_content.GUIDE_MEM_PRO),
+                     ("guide_airpods", seo_content.GUIDE_AIRPODS)):
         gt = guide_title(m, url.strip("/").split("/")[-1])
         ctx[key] = (f'<a href="{url}">«{e(gt)}»</a>', f"«{gt}»")
     return ctx
@@ -954,7 +956,7 @@ class _GuideCtx(dict):
             raise KeyError(k)
         w = k[5:].split("_")
         w = w[1:] if w[0] == "apple" else w
-        return " ".join({"iphone": "iPhone", "ipad": "iPad"}.get(x, x if x[:1].isdigit() else x.capitalize()) for x in w)
+        return " ".join({"iphone": "iPhone", "ipad": "iPad", "airpods": "AirPods"}.get(x, x if x[:1].isdigit() else x.capitalize()) for x in w)
 
 
 def _fill(tpl, ctx, escape):
@@ -1001,7 +1003,7 @@ def page_guide(m, slug):
     body_html = _fill(g["body"], ctx, True)
     if links:
         body_html += "<h2>Где посмотреть варианты</h2>" + "".join(links)
-    crumbs, crumbs_ld = breadcrumbs([("iPhone", "/catalog/iphone/"), (title, None)])
+    crumbs, crumbs_ld = breadcrumbs([g.get("crumb", ("iPhone", "/catalog/iphone/")), (title, None)])
     src = "".join(f'<li><a href="{e(u)}" rel="nofollow noopener" target="_blank">{e(u)}</a></li>' for u in g["sources"])
     d = g["modified"]
     body = [crumbs, f"<h1>{e(title)}</h1>", '<article class="article">',
