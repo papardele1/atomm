@@ -657,7 +657,7 @@ def links_ctx(m):
     for key, url in (("guide", seo_content.GUIDE_18PRO), ("guide_17_18", seo_content.GUIDE_17_18),
                      ("guide_which", seo_content.GUIDE_WHICH), ("guide_sim", seo_content.GUIDE_SIM),
                      ("guide_mem", seo_content.GUIDE_MEM), ("guide_mem_pro", seo_content.GUIDE_MEM_PRO),
-                     ("guide_airpods", seo_content.GUIDE_AIRPODS)):
+                     ("guide_airpods", seo_content.GUIDE_AIRPODS), ("guide_colors", seo_content.GUIDE_COLORS)):
         gt = guide_title(m, url.strip("/").split("/")[-1])
         ctx[key] = (f'<a href="{url}">«{e(gt)}»</a>', f"«{gt}»")
     return ctx
@@ -729,6 +729,51 @@ def mem_guide_ctx(m, g):
                         f'<th>Все варианты</th></tr>{"".join(rows)}</table>', "")
     ctx["mem_sections"] = ("\n".join(secs), "")
     ctx["mem_summary"] = (f"<ul>{''.join(summ)}</ul>" if summ else "", "")
+    return ctx
+
+
+def color_guide_ctx(m, g):
+    """Плейсхолдеры статьи про цвета: {color_table} (цвет × модель: объёмы в наличии со ссылками на страницы памяти
+    и цена «от») и {stock_<key>} — фраза о наличии цвета. Только товары в наличии; цвет — по английскому названию
+    в скобках («голубой (Glacier)»)."""
+    cg = g["color_guide"]
+    pages = [m["pages"].get(sl) for sl in cg["models"]]
+    pages = [pg for pg in pages if pg and pg["kind"] == "model"]
+    ctx, rows = {}, []
+    for key, en, label in cg["colors"]:
+        rx = re.compile(r"\(" + re.escape(en) + r"\)", re.I)
+        cells, parts = [], []
+        for pg in pages:
+            its = [it for it in in_stock(pg["items"])
+                   if (lambda mt: mt and rx.search(mt.group(1)))(_COLOR_FULL.search(it["name"]))]
+            mems = sorted({it["mem"] for it in its if it["mem"]})
+            links = ", ".join(
+                f'<a href="/catalog/{pg["slug"]}/{mem_slug(gb)}/">{mem_label(gb)}</a>' if mem_slug(gb) in pg["mems"]
+                else f'<a href="/catalog/{pg["slug"]}/">{mem_label(gb)}</a>' for gb in mems)
+            lo, _ = price_range(its)
+            cells.append(f"<td>{links}<br>от {rub(lo)}</td>" if links else "<td>нет в наличии</td>")
+            if mems:
+                parts.append((display(pg["sub"], pg["sec"]), join_ru(mem_label(gb) for gb in mems)))
+        rows.append(f"<tr><td>{e(label)}</td>{''.join(cells)}</tr>")
+        # ссылки — в таблице; здесь короткая фраза: одинаковые объёмы у всех моделей — одним списком
+        if not parts:
+            st = "Сейчас этого цвета нет в наличии."
+        elif len(parts) == len(pages) == 2 and len({x[1] for x in parts}) == 1:
+            st = f"Сейчас в наличии у обеих моделей: {parts[0][1]}."
+        else:
+            st = "Сейчас в наличии: " + "; ".join(f"{nm} — {ms}" for nm, ms in parts) + "."
+        ctx[f"stock_{key}"] = st
+    # наличие у всех цветов одинаковое — одна общая фраза под таблицей вместо повтора в каждом разделе
+    sts = {ctx[f"stock_{k}"] for k, _, _ in cg["colors"]}
+    ctx["color_common"] = ""
+    if len(sts) == 1 and pages:
+        st = sts.pop()
+        ctx["color_common"] = (st.replace("Сейчас в наличии", "Сейчас все цвета есть в наличии", 1) + " "
+                               if st.startswith("Сейчас в наличии") else st + " ")
+        for k, _, _ in cg["colors"]:
+            ctx[f"stock_{k}"] = ""
+    head = "".join(f"<th>{e(display(pg['sub'], pg['sec']))}</th>" for pg in pages)
+    ctx["color_table"] = (f'<table class="cmp"><tr><th>Цвет</th>{head}</tr>{"".join(rows)}</table>' if pages else "", "")
     return ctx
 
 
@@ -980,6 +1025,8 @@ def page_guide(m, slug):
     ctx.update(lctx)
     if g.get("mem_guide"):
         ctx.update(mem_guide_ctx(m, g))
+    if g.get("color_guide"):
+        ctx.update(color_guide_ctx(m, g))
     title = guide_title(m, slug)
     for key, (lead, slugs, tail) in g.get("more_models", {}).items():
         av = [lctx["link_" + sl.replace("-", "_")][0] for sl in slugs if "link_" + sl.replace("-", "_") in lctx]
